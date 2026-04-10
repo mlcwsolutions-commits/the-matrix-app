@@ -25,9 +25,22 @@ function UserDashboard({ session }) {
   })
   const [transactions, setTransactions] = useState([])
 
+  // Transfer state
+  const [showTransferModal, setShowTransferModal] = useState(false)
+  const [showVerifyModal, setShowVerifyModal] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [selectedRecipient, setSelectedRecipient] = useState(null)
+  const [transferAmount, setTransferAmount] = useState('')
+  const [transferDescription, setTransferDescription] = useState('')
+  const [transferPassword, setTransferPassword] = useState('')
+  const [transferLoading, setTransferLoading] = useState(false)
+  const [searchLoading, setSearchLoading] = useState(false)
+
   const EDGE_FUNCTION_URL = 'https://iqctlwnlesnimzzatwry.supabase.co/functions/v1/get-user-data'
   const BUY_SPONSORED_URL = 'https://iqctlwnlesnimzzatwry.supabase.co/functions/v1/buy-self-sponsored'
-  const DOWNLINE_URL = 'https://iqctlwnlesnimzzatwry.supabase.co/functions/v1/get-downline'
+  const SEARCH_USERS_URL = 'https://iqctlwnlesnimzzatwry.supabase.co/functions/v1/search-users'
+  const TRANSFER_URL = 'https://iqctlwnlesnimzzatwry.supabase.co/functions/v1/transfer-points'
 
   useEffect(() => {
     loadUserData()
@@ -89,7 +102,7 @@ function UserDashboard({ session }) {
       const { data: { session: currentSession } } = await supabase.auth.getSession()
       if (!currentSession) return
 
-      const response = await fetch(DOWNLINE_URL, {
+      const response = await fetch('https://iqctlwnlesnimzzatwry.supabase.co/functions/v1/get-downline', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: currentSession.user.id })
@@ -145,11 +158,128 @@ function UserDashboard({ session }) {
     }
   }
 
+  const searchUsers = async () => {
+    if (!searchQuery.trim() || searchQuery.length < 2) {
+      setSearchResults([])
+      return
+    }
+
+    setSearchLoading(true)
+    try {
+      const { data: { session: currentSession } } = await supabase.auth.getSession()
+      
+      const response = await fetch(SEARCH_USERS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: searchQuery,
+          excludeUserId: currentSession.user.id
+        })
+      })
+
+      const result = await response.json()
+      if (result.success) {
+        setSearchResults(result.users)
+      }
+    } catch (error) {
+      console.error('Search error:', error)
+    } finally {
+      setSearchLoading(false)
+    }
+  }
+
+  const selectRecipient = (user) => {
+    setSelectedRecipient(user)
+    setSearchQuery('')
+    setSearchResults([])
+  }
+
+  const openTransferModal = () => {
+    setSelectedRecipient(null)
+    setSearchQuery('')
+    setSearchResults([])
+    setTransferAmount('')
+    setTransferDescription('')
+    setTransferPassword('')
+    setShowTransferModal(true)
+  }
+
+  const openVerifyModal = () => {
+    if (!selectedRecipient) {
+      alert('Please select a recipient')
+      return
+    }
+    if (!transferAmount || parseInt(transferAmount) <= 0) {
+      alert('Please enter a valid amount')
+      return
+    }
+    if (parseInt(transferAmount) > (userData?.master_points || 0)) {
+      alert('Insufficient points')
+      return
+    }
+    setShowVerifyModal(true)
+  }
+
+  const confirmTransfer = async () => {
+    if (!transferPassword) {
+      alert('Please enter your password')
+      return
+    }
+
+    setTransferLoading(true)
+    try {
+      const { data: { session: currentSession } } = await supabase.auth.getSession()
+      
+      // First verify password
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: currentSession.user.email,
+        password: transferPassword
+      })
+
+      if (signInError) {
+        alert('Incorrect password. Transfer cancelled.')
+        setShowVerifyModal(false)
+        setTransferLoading(false)
+        return
+      }
+
+      // Process transfer
+      const response = await fetch(TRANSFER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fromUserId: currentSession.user.id,
+          toUserCode: selectedRecipient.referral_code,
+          amount: parseInt(transferAmount),
+          description: transferDescription
+        })
+      })
+
+      const result = await response.json()
+      if (result.success) {
+        alert(`✅ ${result.message}`)
+        setShowTransferModal(false)
+        setShowVerifyModal(false)
+        setSelectedRecipient(null)
+        setTransferAmount('')
+        setTransferDescription('')
+        setTransferPassword('')
+        loadUserData()
+      } else {
+        alert(`❌ ${result.message}`)
+      }
+    } catch (error) {
+      alert('Error processing transfer')
+    } finally {
+      setTransferLoading(false)
+    }
+  }
+
   const handleLogout = async () => {
-  await supabase.auth.signOut()
-  sessionStorage.removeItem('isAdmin')
-  navigate('/login', { replace: true })
-}
+    await supabase.auth.signOut()
+    sessionStorage.removeItem('isAdmin')
+    navigate('/login')
+  }
 
   if (loading) {
     return (
@@ -167,7 +297,7 @@ function UserDashboard({ session }) {
     )
   }
 
-  // Helper to render level 1 spots
+  // Helper functions for rendering (keep your existing render functions)
   const renderLevel1Spots = () => {
     const spots = []
     for (let pos = 1; pos <= 4; pos++) {
@@ -198,7 +328,6 @@ function UserDashboard({ session }) {
     return spots
   }
 
-  // Helper to render level 2 spots (condensed)
   const renderLevel2Summary = () => {
     const occupiedCount = downline.level2.length
     return (
@@ -211,7 +340,6 @@ function UserDashboard({ session }) {
     )
   }
 
-  // Helper to render level 3 summary
   const renderLevel3Summary = () => {
     const occupiedCount = downline.level3.length
     return (
@@ -224,7 +352,6 @@ function UserDashboard({ session }) {
     )
   }
 
-  // Helper to render level 4 summary
   const renderLevel4Summary = () => {
     const occupiedCount = downline.level4.length
     return (
@@ -236,6 +363,8 @@ function UserDashboard({ session }) {
       </div>
     )
   }
+
+  const referralLink = `${window.location.origin}/signup?ref=${userData?.referral_code || ''}`
 
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #0a0a2a 0%, #1a1a3a 100%)' }}>
@@ -282,7 +411,7 @@ function UserDashboard({ session }) {
             </div>
           </div>
 
-          {/* Level 1 - Direct referrals (4 spots) */}
+          {/* Level 1 */}
           <div style={{ marginBottom: '30px' }}>
             <div style={{ textAlign: 'center', marginBottom: '10px' }}>
               <span style={{ color: '#ffa502', fontWeight: 'bold' }}>LEVEL 1</span>
@@ -330,6 +459,8 @@ function UserDashboard({ session }) {
           {/* Left Column - Actions */}
           <div style={{ background: '#1a1a3a', padding: '20px', borderRadius: '10px' }}>
             <h2 style={{ color: '#00ccff', marginBottom: '20px' }}>⚡ Your Actions</h2>
+            
+            {/* Referral Code Section */}
             <div style={{ marginBottom: '20px' }}>
               <p style={{ color: '#aaa', marginBottom: '8px' }}>Your Referral Code:</p>
               <code style={{ display: 'block', background: '#0a0a2a', padding: '10px', borderRadius: '5px', textAlign: 'center', color: '#00ff88', marginBottom: '10px' }}>
@@ -340,11 +471,26 @@ function UserDashboard({ session }) {
                   navigator.clipboard.writeText(userData?.referral_code || '')
                   alert('Referral code copied!')
                 }}
-                style={{ width: '100%', padding: '10px', background: '#333', border: 'none', borderRadius: '5px', color: 'white', cursor: 'pointer' }}
+                style={{ width: '100%', padding: '10px', background: '#333', border: 'none', borderRadius: '5px', color: 'white', cursor: 'pointer', marginBottom: '10px' }}
               >
                 📋 Copy Code
               </button>
+              
+              <p style={{ color: '#aaa', marginBottom: '8px', marginTop: '15px' }}>Your Referral Link:</p>
+              <code style={{ display: 'block', background: '#0a0a2a', padding: '10px', borderRadius: '5px', textAlign: 'center', color: '#00ff88', marginBottom: '10px', wordBreak: 'break-all', fontSize: '12px' }}>
+                {referralLink}
+              </code>
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText(referralLink)
+                  alert('Referral link copied! Share it with friends.')
+                }}
+                style={{ width: '100%', padding: '10px', background: '#00ccff', border: 'none', borderRadius: '5px', color: '#0a0a2a', fontWeight: 'bold', cursor: 'pointer' }}
+              >
+                🔗 Copy Referral Link
+              </button>
             </div>
+
             <button 
               onClick={buySelfSponsored}
               disabled={buying}
@@ -362,6 +508,14 @@ function UserDashboard({ session }) {
             >
               {buying ? 'Processing...' : '🔄 Buy Self-Sponsored Account (50,000 pts)'}
             </button>
+
+            <button 
+              onClick={openTransferModal}
+              style={{ width: '100%', padding: '12px', background: '#9b59b6', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '10px', color: 'white' }}
+            >
+              💸 Transfer Points to Another User
+            </button>
+
             <button 
               onClick={() => {
                 loadUserData()
@@ -421,6 +575,144 @@ function UserDashboard({ session }) {
           <p>Together We Will All Prosper</p>
         </div>
       </div>
+
+      {/* Transfer Modal */}
+      {showTransferModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.8)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#1a1a3a', padding: '30px', borderRadius: '10px', maxWidth: '500px', width: '90%', border: '2px solid #9b59b6' }}>
+            <h2 style={{ color: '#9b59b6', marginBottom: '20px' }}>💸 Transfer Points</h2>
+            
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ color: '#aaa', display: 'block', marginBottom: '5px' }}>Search Recipient (Email or Referral Code)</label>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value)
+                  if (e.target.value.length >= 2) {
+                    setTimeout(() => searchUsers(), 300)
+                  } else {
+                    setSearchResults([])
+                  }
+                }}
+                placeholder="Enter email or referral code..."
+                style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #9b59b6', background: '#0a0a2a', color: 'white' }}
+              />
+              {searchLoading && <p style={{ color: '#888', fontSize: '12px', marginTop: '5px' }}>Searching...</p>}
+              {searchResults.length > 0 && (
+                <div style={{ marginTop: '10px', border: '1px solid #9b59b6', borderRadius: '5px', maxHeight: '150px', overflowY: 'auto' }}>
+                  {searchResults.map(user => (
+                    <div
+                      key={user.id}
+                      onClick={() => selectRecipient(user)}
+                      style={{ padding: '10px', cursor: 'pointer', borderBottom: '1px solid #333', background: '#0a0a2a' }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = '#2a2a4a'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = '#0a0a2a'}
+                    >
+                      <div style={{ color: '#00ff88' }}>{user.referral_code}</div>
+                      <div style={{ color: '#888', fontSize: '12px' }}>{user.email}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {selectedRecipient && (
+              <div style={{ marginBottom: '15px', padding: '10px', background: '#0a0a2a', borderRadius: '5px', border: '1px solid #9b59b6' }}>
+                <p style={{ color: '#00ff88', marginBottom: '5px' }}>Recipient: {selectedRecipient.referral_code}</p>
+                <p style={{ color: '#888', fontSize: '12px' }}>{selectedRecipient.email}</p>
+              </div>
+            )}
+            
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ color: '#aaa', display: 'block', marginBottom: '5px' }}>Amount (points)</label>
+              <input
+                type="number"
+                value={transferAmount}
+                onChange={(e) => setTransferAmount(e.target.value)}
+                placeholder="Enter amount"
+                style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #9b59b6', background: '#0a0a2a', color: 'white' }}
+              />
+              <p style={{ color: '#888', fontSize: '12px', marginTop: '5px' }}>Your balance: {userData?.master_points?.toLocaleString()} points</p>
+            </div>
+            
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ color: '#aaa', display: 'block', marginBottom: '5px' }}>Description (optional)</label>
+              <input
+                type="text"
+                value={transferDescription}
+                onChange={(e) => setTransferDescription(e.target.value)}
+                placeholder="Reason for transfer"
+                style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #9b59b6', background: '#0a0a2a', color: 'white' }}
+              />
+            </div>
+            
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={openVerifyModal}
+                disabled={!selectedRecipient || !transferAmount}
+                style={{ flex: 1, padding: '12px', background: '#9b59b6', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: (!selectedRecipient || !transferAmount) ? 'not-allowed' : 'pointer', color: 'white', opacity: (!selectedRecipient || !transferAmount) ? 0.5 : 1 }}
+              >
+                Continue
+              </button>
+              <button
+                onClick={() => setShowTransferModal(false)}
+                style={{ flex: 1, padding: '12px', background: '#333', border: 'none', borderRadius: '5px', color: 'white', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Verify Modal */}
+      {showVerifyModal && selectedRecipient && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#1a1a3a', padding: '30px', borderRadius: '10px', maxWidth: '500px', width: '90%', border: '2px solid #ffa502' }}>
+            <h2 style={{ color: '#ffa502', marginBottom: '20px' }}>🔐 Verify Transfer</h2>
+            
+            <div style={{ marginBottom: '20px', padding: '15px', background: '#0a0a2a', borderRadius: '5px' }}>
+              <p style={{ color: 'white', marginBottom: '10px' }}>Transfer Details:</p>
+              <p style={{ color: '#00ff88' }}>To: {selectedRecipient.referral_code}</p>
+              <p style={{ color: '#888', fontSize: '12px', marginBottom: '10px' }}>{selectedRecipient.email}</p>
+              <p style={{ color: '#ffa502' }}>Amount: {parseInt(transferAmount).toLocaleString()} points</p>
+              {transferDescription && <p style={{ color: '#aaa' }}>Description: {transferDescription}</p>}
+              <p style={{ color: '#ff6666', marginTop: '10px' }}>Fee: 0 points</p>
+            </div>
+            
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ color: '#aaa', display: 'block', marginBottom: '5px' }}>Enter your password to confirm</label>
+              <input
+                type="password"
+                value={transferPassword}
+                onChange={(e) => setTransferPassword(e.target.value)}
+                placeholder="Your password"
+                style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ffa502', background: '#0a0a2a', color: 'white' }}
+              />
+            </div>
+            
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={confirmTransfer}
+                disabled={transferLoading}
+                style={{ flex: 1, padding: '12px', background: '#ffa502', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: transferLoading ? 'not-allowed' : 'pointer', color: '#0a0a2a' }}
+              >
+                {transferLoading ? 'Processing...' : 'Confirm Transfer'}
+              </button>
+              <button
+                onClick={() => {
+                  setShowVerifyModal(false)
+                  setTransferPassword('')
+                }}
+                style={{ flex: 1, padding: '12px', background: '#333', border: 'none', borderRadius: '5px', color: 'white', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
