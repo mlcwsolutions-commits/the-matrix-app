@@ -41,9 +41,9 @@ function Login() {
         if (email === 'admin@thematrix.com' && password === 'admin123') {
           // Clear any existing user session
           await supabase.auth.signOut()
-          // Set admin flag FIRST
+          // Set admin flag
           sessionStorage.setItem('isAdmin', 'true')
-          // Force a hard redirect to ensure sessionStorage persists
+          // Use window.location for hard redirect
           window.location.href = '/admin'
         } else {
           setError('Invalid admin credentials')
@@ -53,7 +53,7 @@ function Login() {
         // User login
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
-        navigate('/', { replace: true })
+        window.location.href = '/'
       }
     } catch (err) {
       setError(err.message)
