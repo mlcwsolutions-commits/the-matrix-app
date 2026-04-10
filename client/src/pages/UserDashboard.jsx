@@ -159,121 +159,119 @@ function UserDashboard({ session }) {
   }
 
   const searchUsers = async () => {
-    if (!searchQuery.trim() || searchQuery.length < 2) {
-      setSearchResults([])
-      return
-    }
-
-    setSearchLoading(true)
-    try {
-      const { data: { session: currentSession } } = await supabase.auth.getSession()
-      
-      const response = await fetch(SEARCH_USERS_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: searchQuery,
-          excludeUserId: currentSession.user.id
-        })
-      })
-
-      const result = await response.json()
-      if (result.success) {
-        setSearchResults(result.users)
-      }
-    } catch (error) {
-      console.error('Search error:', error)
-    } finally {
-      setSearchLoading(false)
-    }
-  }
-
-  const selectRecipient = (user) => {
-    setSelectedRecipient(user)
-    setSearchQuery('')
+  if (!searchQuery.trim() || searchQuery.length < 2) {
     setSearchResults([])
+    return
   }
 
-  const openTransferModal = () => {
-    setSelectedRecipient(null)
-    setSearchQuery('')
-    setSearchResults([])
-    setTransferAmount('')
-    setTransferDescription('')
-    setTransferPassword('')
-    setShowTransferModal(true)
-  }
-
-  const openVerifyModal = () => {
-    if (!selectedRecipient) {
-      alert('Please select a recipient')
-      return
-    }
-    if (!transferAmount || parseInt(transferAmount) <= 0) {
-      alert('Please enter a valid amount')
-      return
-    }
-    if (parseInt(transferAmount) > (userData?.master_points || 0)) {
-      alert('Insufficient points')
-      return
-    }
-    setShowVerifyModal(true)
-  }
-
-  const confirmTransfer = async () => {
-    if (!transferPassword) {
-      alert('Please enter your password')
-      return
-    }
-
-    setTransferLoading(true)
-    try {
-      const { data: { session: currentSession } } = await supabase.auth.getSession()
-      
-      // First verify password
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: currentSession.user.email,
-        password: transferPassword
+  setSearchLoading(true)
+  try {
+    const { data: { session: currentSession } } = await supabase.auth.getSession()
+    
+    const response = await fetch(SEARCH_USERS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: searchQuery,
+        excludeUserId: currentSession.user.id
       })
+    })
 
-      if (signInError) {
-        alert('Incorrect password. Transfer cancelled.')
-        setShowVerifyModal(false)
-        setTransferLoading(false)
-        return
-      }
+    const result = await response.json()
+    if (result.success) {
+      setSearchResults(result.users)
+    }
+  } catch (error) {
+    console.error('Search error:', error)
+  } finally {
+    setSearchLoading(false)
+  }
+}
 
-      // Process transfer
-      const response = await fetch(TRANSFER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fromUserId: currentSession.user.id,
-          toUserCode: selectedRecipient.referral_code,
-          amount: parseInt(transferAmount),
-          description: transferDescription
-        })
-      })
+const selectRecipient = (user) => {
+  setSelectedRecipient(user)
+  setSearchQuery('')
+  setSearchResults([])
+}
 
-      const result = await response.json()
-      if (result.success) {
-        alert(`✅ ${result.message}`)
-        setShowTransferModal(false)
-        setShowVerifyModal(false)
-        setSelectedRecipient(null)
-        setTransferAmount('')
-        setTransferDescription('')
-        setTransferPassword('')
-        loadUserData()
-      } else {
-        alert(`❌ ${result.message}`)
-      }
-    } catch (error) {
-      alert('Error processing transfer')
-    } finally {
+const openTransferModal = () => {
+  setSelectedRecipient(null)
+  setSearchQuery('')
+  setSearchResults([])
+  setTransferAmount('')
+  setTransferDescription('')
+  setTransferPassword('')
+  setShowTransferModal(true)
+}
+
+const openVerifyModal = () => {
+  if (!selectedRecipient) {
+    alert('Please select a recipient')
+    return
+  }
+  if (!transferAmount || parseInt(transferAmount) <= 0) {
+    alert('Please enter a valid amount')
+    return
+  }
+  if (parseInt(transferAmount) > (userData?.master_points || 0)) {
+    alert('Insufficient points')
+    return
+  }
+  setShowVerifyModal(true)
+}
+
+const confirmTransfer = async () => {
+  if (!transferPassword) {
+    alert('Please enter your password')
+    return
+  }
+
+  setTransferLoading(true)
+  try {
+    const { data: { session: currentSession } } = await supabase.auth.getSession()
+    
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: currentSession.user.email,
+      password: transferPassword
+    })
+
+    if (signInError) {
+      alert('Incorrect password. Transfer cancelled.')
+      setShowVerifyModal(false)
       setTransferLoading(false)
+      return
     }
+
+    const response = await fetch(TRANSFER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fromUserId: currentSession.user.id,
+        toUserCode: selectedRecipient.referral_code,
+        amount: parseInt(transferAmount),
+        description: transferDescription
+      })
+    })
+
+    const result = await response.json()
+    if (result.success) {
+      alert(`✅ ${result.message}`)
+      setShowTransferModal(false)
+      setShowVerifyModal(false)
+      setSelectedRecipient(null)
+      setTransferAmount('')
+      setTransferDescription('')
+      setTransferPassword('')
+      loadUserData()
+    } else {
+      alert(`❌ ${result.message}`)
+    }
+  } catch (error) {
+    alert('Error processing transfer')
+  } finally {
+    setTransferLoading(false)
   }
+}
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -509,11 +507,11 @@ function UserDashboard({ session }) {
             </button>
 
             <button 
-              onClick={openTransferModal}
-              style={{ width: '100%', padding: '12px', background: '#9b59b6', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '10px', color: 'white' }}
-            >
-              💸 Transfer Points to Another User
-            </button>
+  onClick={openTransferModal}
+  style={{ width: '100%', padding: '12px', background: '#9b59b6', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '10px', color: 'white' }}
+>
+  💸 Transfer Points to Another User
+</button>
 
             <button 
               onClick={() => {
