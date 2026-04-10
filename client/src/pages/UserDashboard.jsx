@@ -297,7 +297,6 @@ function UserDashboard({ session }) {
     )
   }
 
-  // Helper functions for rendering (keep your existing render functions)
   const renderLevel1Spots = () => {
     const spots = []
     for (let pos = 1; pos <= 4; pos++) {
