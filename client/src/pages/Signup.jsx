@@ -59,21 +59,32 @@ function Signup() {
 
       if (!authData.user) throw new Error('User creation failed')
 
+      // Prepare referral code for edge function
+      let finalReferralCode = referralCode
+      let finalRandomAssign = randomAssign
+
+      if (randomAssign) {
+        finalReferralCode = ''  // Clear referral code when random assignment is checked
+      }
+
       // Get the session to obtain a valid token
       const { data: { session: currentSession } } = await supabase.auth.getSession()
 
       // Step 2: Call Edge Function to create user in database and place in matrix
       const response = await fetch(EDGE_FUNCTION_URL, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    userId: authData.user.id,
-    name: name,
-    email: email,
-    referralCode: randomAssign ? '' : referralCode,
-    randomAssign: randomAssign
-  })
-})
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentSession?.access_token || ''}`
+        },
+        body: JSON.stringify({
+          userId: authData.user.id,
+          name: name,
+          email: email,
+          referralCode: finalReferralCode,
+          randomAssign: finalRandomAssign
+        })
+      })
 
       const result = await response.json()
 
