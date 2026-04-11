@@ -7,12 +7,8 @@ function UserDashboard({ session }) {
   const [loading, setLoading] = useState(true)
   const [buying, setBuying] = useState(false)
   const [userData, setUserData] = useState(null)
-  const [downline, setDownline] = useState({
-    level1: [],
-    level2: [],
-    level3: [],
-    level4: []
-  })
+  const [userMatrices, setUserMatrices] = useState([])
+  const [expandedMatrices, setExpandedMatrices] = useState(new Set())
   const [stats, setStats] = useState({
     master_points: 0,
     commission_earned: 0,
@@ -54,7 +50,7 @@ function UserDashboard({ session }) {
 
   useEffect(() => {
     loadUserData()
-    loadDownline()
+    loadUserMatrices()
   }, [])
 
   const loadUserData = async () => {
@@ -107,24 +103,90 @@ function UserDashboard({ session }) {
     }
   }
 
-  const loadDownline = async () => {
+  const loadUserMatrices = async () => {
     try {
       const { data: { session: currentSession } } = await supabase.auth.getSession()
       if (!currentSession) return
 
-      const response = await fetch('https://iqctlwnlesnimzzatwry.supabase.co/functions/v1/get-downline', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: currentSession.user.id })
-      })
+      // Get all spots owned by this user
+      const { data: userSpots } = await supabase
+        .from('matrix_spots')
+        .select('id, level, position, matrix_id, parent_id')
+        .eq('user_id', currentSession.user.id)
+        .order('level', { ascending: true })
+        .order('position', { ascending: true })
 
-      const result = await response.json()
-      if (result.success) {
-        setDownline(result.downline)
+      if (!userSpots || userSpots.length === 0) return
+
+      // For each spot, get its downline (people below it)
+      const matrices = []
+      
+      for (const spot of userSpots) {
+        // Get all spots in the same matrix
+        const { data: allSpots } = await supabase
+          .from('matrix_spots')
+          .select('id, level, position, user_id, user_name, parent_id')
+          .eq('matrix_id', spot.matrix_id)
+
+        // Build the downline tree for this spot
+        const downline = []
+        
+        function collectDescendants(parentId, currentLevel, maxLevel) {
+          if (currentLevel > 4) return
+          const children = allSpots?.filter(s => s.parent_id === parentId) || []
+          for (const child of children) {
+            downline.push({
+              ...child,
+              relativeLevel: currentLevel,
+              isSelf: child.user_id === currentSession.user.id
+            })
+            collectDescendants(child.id, currentLevel + 1, maxLevel)
+          }
+        }
+        
+        collectDescendants(spot.id, 1, 4)
+        
+        // Organize by relative level
+        const level1 = downline.filter(d => d.relativeLevel === 1)
+        const level2 = downline.filter(d => d.relativeLevel === 2)
+        const level3 = downline.filter(d => d.relativeLevel === 3)
+        const level4 = downline.filter(d => d.relativeLevel === 4)
+        
+        matrices.push({
+          spotId: spot.id,
+          level: spot.level,
+          position: spot.position,
+          matrixId: spot.matrix_id,
+          isOriginal: spot.level === 0 && spot.position === 1,
+          downline: downline,
+          level1: level1,
+          level2: level2,
+          level3: level3,
+          level4: level4,
+          filledCount: 1 + level1.length + level2.length + level3.length + level4.length
+        })
+      }
+      
+      setUserMatrices(matrices)
+      
+      // Auto-expand the original matrix (level 0, position 1)
+      const originalMatrix = matrices.find(m => m.isOriginal)
+      if (originalMatrix && !expandedMatrices.has(originalMatrix.spotId)) {
+        setExpandedMatrices(prev => new Set([...prev, originalMatrix.spotId]))
       }
     } catch (error) {
-      console.error('Error loading downline:', error)
+      console.error('Error loading user matrices:', error)
     }
+  }
+
+  const toggleMatrix = (spotId) => {
+    const newSet = new Set(expandedMatrices)
+    if (newSet.has(spotId)) {
+      newSet.delete(spotId)
+    } else {
+      newSet.add(spotId)
+    }
+    setExpandedMatrices(newSet)
   }
 
   const buySelfSponsored = async () => {
@@ -156,7 +218,7 @@ function UserDashboard({ session }) {
       if (result.success) {
         alert('✅ ' + result.message)
         loadUserData()
-        loadDownline()
+        loadUserMatrices()
       } else {
         alert('❌ ' + result.message)
       }
@@ -177,21 +239,11 @@ function UserDashboard({ session }) {
 
     setBuyLoading(true)
     try {
-      // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 1000))
       
-      // Add points to user
       const newPoints = (userData?.master_points || 0) + parseInt(buyAmount)
       setUserData({ ...userData, master_points: newPoints })
       setStats({ ...stats, master_points: newPoints })
-      
-      // Add mock transaction
-      const mockTransaction = {
-        timestamp: new Date().toISOString(),
-        type: 'points_purchase_mock',
-        amount: parseInt(buyAmount)
-      }
-      setTransactions([mockTransaction, ...transactions])
       
       alert(`✅ Added ${parseInt(buyAmount).toLocaleString()} points to your account!`)
       setShowBuyModal(false)
@@ -218,23 +270,13 @@ function UserDashboard({ session }) {
 
     setCashoutLoading(true)
     try {
-      // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 1000))
       
-      // Remove points from user
       const newPoints = (userData?.master_points || 0) - parseInt(cashoutAmount)
       setUserData({ ...userData, master_points: newPoints })
       setStats({ ...stats, master_points: newPoints })
       
-      // Add mock transaction
-      const mockTransaction = {
-        timestamp: new Date().toISOString(),
-        type: 'cashout_mock',
-        amount: -parseInt(cashoutAmount)
-      }
-      setTransactions([mockTransaction, ...transactions])
-      
-      alert(`✅ Cashout request submitted for ${parseInt(cashoutAmount).toLocaleString()} points. Processing will take 1-3 business days.`)
+      alert(`✅ Cashout request submitted for ${parseInt(cashoutAmount).toLocaleString()} points.`)
       setShowCashoutModal(false)
       setCashoutAmount('')
       loadUserData()
@@ -366,6 +408,145 @@ function UserDashboard({ session }) {
     navigate('/login')
   }
 
+  // Render a single matrix visualization
+  const renderMatrixVisualization = (matrix) => {
+    const isExpanded = expandedMatrices.has(matrix.spotId)
+    
+    // Helper to render level 1 spots
+    const renderLevel1Spots = () => {
+      const spots = []
+      for (let pos = 1; pos <= 4; pos++) {
+        const occupant = matrix.level1.find(s => s.position === pos)
+        spots.push(
+          <div key={pos} style={{
+            width: '80px',
+            height: '80px',
+            background: occupant ? 'rgba(0, 255, 136, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+            border: occupant ? '2px solid #00ff88' : '2px solid rgba(0, 255, 255, 0.2)',
+            borderRadius: '10px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            textAlign: 'center',
+            position: 'relative'
+          }}>
+            <div style={{ position: 'absolute', top: '5px', left: '5px', fontSize: '10px', color: '#888' }}>{pos}</div>
+            {occupant ? (
+              <div style={{ color: occupant.isSelf ? '#ffa502' : '#00ff88', fontSize: '12px', fontWeight: 'bold' }}>
+                {occupant.isSelf ? '👤 SELF' : occupant.user_name?.substring(0, 6)}
+              </div>
+            ) : (
+              <div style={{ color: '#ff6666', fontSize: '11px' }}>Empty</div>
+            )}
+          </div>
+        )
+      }
+      return spots
+    }
+
+    const level2Count = matrix.level2.length
+    const level3Count = matrix.level3.length
+    const level4Count = matrix.level4.length
+
+    return (
+      <div key={matrix.spotId} style={{ marginBottom: '20px', border: '1px solid rgba(0, 255, 255, 0.2)', borderRadius: '10px', overflow: 'hidden' }}>
+        {/* Matrix Header */}
+        <div 
+          onClick={() => toggleMatrix(matrix.spotId)}
+          style={{
+            background: matrix.isOriginal ? '#1a3a3a' : '#2a2a4a',
+            padding: '15px',
+            cursor: 'pointer',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            borderBottom: isExpanded ? '1px solid #00ff88' : 'none'
+          }}
+        >
+          <div>
+            <span style={{ color: '#00ff88', fontWeight: 'bold' }}>
+              {matrix.isOriginal ? '⭐ Original Matrix' : '📌 Self-Sponsored Matrix'}
+            </span>
+            <span style={{ color: '#888', fontSize: '12px', marginLeft: '15px' }}>
+              Level {matrix.level}, Position {matrix.position}
+            </span>
+            <span style={{ color: '#ffa502', fontSize: '12px', marginLeft: '15px' }}>
+              {matrix.filledCount}/85 spots filled
+            </span>
+          </div>
+          <div style={{ color: '#00ccff', fontSize: '20px' }}>
+            {isExpanded ? '▼' : '▶'}
+          </div>
+        </div>
+        
+        {/* Matrix Content (expandable) */}
+        {isExpanded && (
+          <div style={{ padding: '20px' }}>
+            {/* Level 0 - You (this spot) */}
+            <div style={{ textAlign: 'center', marginBottom: '30px' }}>
+              <div style={{ display: 'inline-block', background: '#0a0a2a', padding: '15px 30px', borderRadius: '10px', border: '2px solid #ffd700' }}>
+                <div style={{ fontSize: '12px', color: '#888' }}>Level 0 (Your Position)</div>
+                <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#ffd700' }}>👤 YOU</div>
+              </div>
+            </div>
+            
+            {/* Level 1 */}
+            <div style={{ marginBottom: '30px' }}>
+              <div style={{ textAlign: 'center', marginBottom: '10px' }}>
+                <span style={{ color: '#ffa502', fontWeight: 'bold' }}>LEVEL 1</span>
+                <span style={{ color: '#888', fontSize: '12px', marginLeft: '10px' }}>(4 spots - Your Direct Downline)</span>
+                <span style={{ color: '#00ff88', fontSize: '12px', marginLeft: '10px' }}>💰 25% commission</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', flexWrap: 'wrap' }}>
+                {renderLevel1Spots()}
+              </div>
+            </div>
+            
+            {/* Level 2 Summary */}
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ textAlign: 'center', marginBottom: '10px' }}>
+                <span style={{ color: '#ffa502', fontWeight: 'bold' }}>LEVEL 2</span>
+                <span style={{ color: '#888', fontSize: '12px', marginLeft: '10px' }}>(16 spots)</span>
+                <span style={{ color: '#00ff88', fontSize: '12px', marginLeft: '10px' }}>💰 25% commission</span>
+              </div>
+              <div style={{ background: '#0a0a2a', height: '20px', borderRadius: '10px', overflow: 'hidden' }}>
+                <div style={{ width: `${(level2Count / 16) * 100}%`, height: '100%', background: 'linear-gradient(90deg, #00ccff, #00ff88)', borderRadius: '10px' }}></div>
+              </div>
+              <p style={{ textAlign: 'center', fontSize: '12px', color: '#aaa', marginTop: '8px' }}>{level2Count} / 16 spots filled</p>
+            </div>
+            
+            {/* Level 3 Summary */}
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ textAlign: 'center', marginBottom: '10px' }}>
+                <span style={{ color: '#ffa502', fontWeight: 'bold' }}>LEVEL 3</span>
+                <span style={{ color: '#888', fontSize: '12px', marginLeft: '10px' }}>(64 spots)</span>
+                <span style={{ color: '#00ff88', fontSize: '12px', marginLeft: '10px' }}>💰 25% commission</span>
+              </div>
+              <div style={{ background: '#0a0a2a', height: '20px', borderRadius: '10px', overflow: 'hidden' }}>
+                <div style={{ width: `${(level3Count / 64) * 100}%`, height: '100%', background: 'linear-gradient(90deg, #00ccff, #00ff88)', borderRadius: '10px' }}></div>
+              </div>
+              <p style={{ textAlign: 'center', fontSize: '12px', color: '#aaa', marginTop: '8px' }}>{level3Count} / 64 spots filled</p>
+            </div>
+            
+            {/* Level 4 Summary */}
+            <div style={{ marginBottom: '10px' }}>
+              <div style={{ textAlign: 'center', marginBottom: '10px' }}>
+                <span style={{ color: '#ffa502', fontWeight: 'bold' }}>LEVEL 4</span>
+                <span style={{ color: '#888', fontSize: '12px', marginLeft: '10px' }}>(256 spots - Placement only)</span>
+                <span style={{ color: '#ff6666', fontSize: '12px', marginLeft: '10px' }}>📌 No commissions</span>
+              </div>
+              <div style={{ background: '#0a0a2a', height: '20px', borderRadius: '10px', overflow: 'hidden' }}>
+                <div style={{ width: `${(level4Count / 256) * 100}%`, height: '100%', background: 'linear-gradient(90deg, #00ccff, #00ff88)', borderRadius: '10px' }}></div>
+              </div>
+              <p style={{ textAlign: 'center', fontSize: '12px', color: '#aaa', marginTop: '8px' }}>{level4Count} / 256 spots filled</p>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #0a0a2a 0%, #1a1a3a 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -378,72 +559,6 @@ function UserDashboard({ session }) {
             }
           `}</style>
         </div>
-      </div>
-    )
-  }
-
-  const renderLevel1Spots = () => {
-    const spots = []
-    for (let pos = 1; pos <= 4; pos++) {
-      const occupant = downline.level1.find(s => s.position === pos)
-      spots.push(
-        <div key={pos} style={{
-          width: '80px',
-          height: '80px',
-          background: occupant ? 'rgba(0, 255, 136, 0.15)' : 'rgba(255, 255, 255, 0.05)',
-          border: occupant ? '2px solid #00ff88' : '2px solid rgba(0, 255, 255, 0.2)',
-          borderRadius: '10px',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          textAlign: 'center',
-          position: 'relative'
-        }}>
-          <div style={{ position: 'absolute', top: '5px', left: '5px', fontSize: '10px', color: '#888' }}>{pos}</div>
-          {occupant ? (
-            <div style={{ color: '#00ff88', fontSize: '12px', fontWeight: 'bold' }}>{occupant.userName?.substring(0, 6)}</div>
-          ) : (
-            <div style={{ color: '#ff6666', fontSize: '11px' }}>Empty</div>
-          )}
-        </div>
-      )
-    }
-    return spots
-  }
-
-  const renderLevel2Summary = () => {
-    const occupiedCount = downline.level2.length
-    return (
-      <div style={{ marginTop: '10px' }}>
-        <div style={{ background: '#0a0a2a', height: '20px', borderRadius: '10px', overflow: 'hidden' }}>
-          <div style={{ width: `${(occupiedCount / 16) * 100}%`, height: '100%', background: 'linear-gradient(90deg, #00ccff, #00ff88)', borderRadius: '10px' }}></div>
-        </div>
-        <p style={{ textAlign: 'center', fontSize: '12px', color: '#aaa', marginTop: '8px' }}>{occupiedCount} / 16 spots filled</p>
-      </div>
-    )
-  }
-
-  const renderLevel3Summary = () => {
-    const occupiedCount = downline.level3.length
-    return (
-      <div style={{ marginTop: '10px' }}>
-        <div style={{ background: '#0a0a2a', height: '20px', borderRadius: '10px', overflow: 'hidden' }}>
-          <div style={{ width: `${(occupiedCount / 64) * 100}%`, height: '100%', background: 'linear-gradient(90deg, #00ccff, #00ff88)', borderRadius: '10px' }}></div>
-        </div>
-        <p style={{ textAlign: 'center', fontSize: '12px', color: '#aaa', marginTop: '8px' }}>{occupiedCount} / 64 spots filled</p>
-      </div>
-    )
-  }
-
-  const renderLevel4Summary = () => {
-    const occupiedCount = downline.level4.length
-    return (
-      <div style={{ marginTop: '10px' }}>
-        <div style={{ background: '#0a0a2a', height: '20px', borderRadius: '10px', overflow: 'hidden' }}>
-          <div style={{ width: `${(occupiedCount / 256) * 100}%`, height: '100%', background: 'linear-gradient(90deg, #00ccff, #00ff88)', borderRadius: '10px' }}></div>
-        </div>
-        <p style={{ textAlign: 'center', fontSize: '12px', color: '#aaa', marginTop: '8px' }}>{occupiedCount} / 256 spots filled</p>
       </div>
     )
   }
@@ -483,54 +598,14 @@ function UserDashboard({ session }) {
           </div>
         </div>
 
-        {/* Matrix Visualization */}
+        {/* My Matrices Section */}
         <div style={{ background: '#1a1a3a', padding: '20px', borderRadius: '10px', marginBottom: '30px' }}>
-          <h2 style={{ color: '#00ccff', marginBottom: '20px', textAlign: 'center' }}>🔷 YOUR MATRIX DOWNLINE</h2>
-          
-          <div style={{ textAlign: 'center', marginBottom: '30px' }}>
-            <div style={{ display: 'inline-block', background: '#0a0a2a', padding: '15px 30px', borderRadius: '10px', border: '2px solid #ffd700' }}>
-              <div style={{ fontSize: '12px', color: '#888' }}>Level 0</div>
-              <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#ffd700' }}>👤 YOU</div>
-            </div>
-          </div>
-
-          <div style={{ marginBottom: '30px' }}>
-            <div style={{ textAlign: 'center', marginBottom: '10px' }}>
-              <span style={{ color: '#ffa502', fontWeight: 'bold' }}>LEVEL 1</span>
-              <span style={{ color: '#888', fontSize: '12px', marginLeft: '10px' }}>(4 spots - Your Direct Downline)</span>
-              <span style={{ color: '#00ff88', fontSize: '12px', marginLeft: '10px' }}>💰 25% commission</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', flexWrap: 'wrap' }}>
-              {renderLevel1Spots()}
-            </div>
-          </div>
-
-          <div style={{ marginBottom: '30px' }}>
-            <div style={{ textAlign: 'center', marginBottom: '10px' }}>
-              <span style={{ color: '#ffa502', fontWeight: 'bold' }}>LEVEL 2</span>
-              <span style={{ color: '#888', fontSize: '12px', marginLeft: '10px' }}>(16 spots)</span>
-              <span style={{ color: '#00ff88', fontSize: '12px', marginLeft: '10px' }}>💰 25% commission</span>
-            </div>
-            {renderLevel2Summary()}
-          </div>
-
-          <div style={{ marginBottom: '30px' }}>
-            <div style={{ textAlign: 'center', marginBottom: '10px' }}>
-              <span style={{ color: '#ffa502', fontWeight: 'bold' }}>LEVEL 3</span>
-              <span style={{ color: '#888', fontSize: '12px', marginLeft: '10px' }}>(64 spots)</span>
-              <span style={{ color: '#00ff88', fontSize: '12px', marginLeft: '10px' }}>💰 25% commission</span>
-            </div>
-            {renderLevel3Summary()}
-          </div>
-
-          <div style={{ marginBottom: '10px' }}>
-            <div style={{ textAlign: 'center', marginBottom: '10px' }}>
-              <span style={{ color: '#ffa502', fontWeight: 'bold' }}>LEVEL 4</span>
-              <span style={{ color: '#888', fontSize: '12px', marginLeft: '10px' }}>(256 spots - Placement only)</span>
-              <span style={{ color: '#ff6666', fontSize: '12px', marginLeft: '10px' }}>📌 No commissions</span>
-            </div>
-            {renderLevel4Summary()}
-          </div>
+          <h2 style={{ color: '#00ccff', marginBottom: '20px' }}>📁 MY MATRICES</h2>
+          {userMatrices.length === 0 ? (
+            <p style={{ textAlign: 'center', color: '#aaa', padding: '20px' }}>No matrices found</p>
+          ) : (
+            userMatrices.map(matrix => renderMatrixVisualization(matrix))
+          )}
         </div>
 
         {/* Two Column Layout for Actions */}
@@ -611,7 +686,7 @@ function UserDashboard({ session }) {
             <button 
               onClick={() => {
                 loadUserData()
-                loadDownline()
+                loadUserMatrices()
               }}
               style={{ width: '100%', padding: '12px', background: '#333', border: 'none', borderRadius: '5px', color: 'white', cursor: 'pointer' }}
             >
@@ -636,7 +711,7 @@ function UserDashboard({ session }) {
               </div>
               <div>
                 <p style={{ color: '#aaa' }}>People You've Referred</p>
-                <p style={{ color: '#00ff88', fontSize: '24px', fontWeight: 'bold' }}>{downline.level1.length}</p>
+                <p style={{ color: '#00ff88', fontSize: '24px', fontWeight: 'bold' }}>{userMatrices[0]?.level1?.length || 0}</p>
               </div>
             </div>
           </div>
@@ -675,8 +750,7 @@ function UserDashboard({ session }) {
             <h2 style={{ color: '#00aaff', marginBottom: '20px' }}>💰 Buy Points</h2>
             
             <div style={{ marginBottom: '20px' }}>
-              <p style={{ color: 'white', marginBottom: '10px' }}>Your current balance: <strong style={{ color: '#00ff88' }}>{userData?.master_points?.toLocaleString()} points</strong></p>
-              <p style={{ color: '#aaa', marginBottom: '10px', fontSize: '12px' }}>1 point = $0.005 USD / $0.01 BBD</p>
+              <p style={{ color: 'white', marginBottom: '10px' }}>Your balance: <strong style={{ color: '#00ff88' }}>{userData?.master_points?.toLocaleString()} points</strong></p>
             </div>
             
             <div style={{ marginBottom: '20px' }}>
@@ -688,7 +762,6 @@ function UserDashboard({ session }) {
                 placeholder="Enter amount"
                 style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #00aaff', background: '#0a0a2a', color: 'white' }}
               />
-              <p style={{ color: '#888', fontSize: '12px', marginTop: '5px' }}>Min: 1,000 points | Max: 1,000,000 points</p>
             </div>
             
             <div style={{ display: 'flex', gap: '10px' }}>
@@ -717,9 +790,8 @@ function UserDashboard({ session }) {
             <h2 style={{ color: '#ffaa00', marginBottom: '20px' }}>💸 Cash Out</h2>
             
             <div style={{ marginBottom: '20px' }}>
-              <p style={{ color: 'white', marginBottom: '10px' }}>Your current balance: <strong style={{ color: '#00ff88' }}>{userData?.master_points?.toLocaleString()} points</strong></p>
-              <p style={{ color: '#aaa', marginBottom: '10px', fontSize: '12px' }}>1 point = $0.005 USD / $0.01 BBD</p>
-              <p style={{ color: '#ffaa00', fontSize: '12px' }}>Minimum cashout: 10,000 points</p>
+              <p style={{ color: 'white', marginBottom: '10px' }}>Your balance: <strong style={{ color: '#00ff88' }}>{userData?.master_points?.toLocaleString()} points</strong></p>
+              <p style={{ color: '#ffaa00', fontSize: '12px' }}>Minimum: 10,000 points</p>
             </div>
             
             <div style={{ marginBottom: '20px' }}>
@@ -735,7 +807,7 @@ function UserDashboard({ session }) {
             
             <div style={{ marginBottom: '20px', background: '#0a0a2a', padding: '10px', borderRadius: '5px' }}>
               <p style={{ color: '#aaa', marginBottom: '5px' }}>Estimated value:</p>
-              <p style={{ color: '#00ff88' }}>${((parseInt(cashoutAmount) || 0) * 0.005).toFixed(2)} USD / ${((parseInt(cashoutAmount) || 0) * 0.01).toFixed(2)} BBD</p>
+              <p style={{ color: '#00ff88' }}>${((parseInt(cashoutAmount) || 0) * 0.005).toFixed(2)} USD</p>
             </div>
             
             <div style={{ display: 'flex', gap: '10px' }}>
