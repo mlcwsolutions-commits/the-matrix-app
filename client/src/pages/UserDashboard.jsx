@@ -97,95 +97,69 @@ function UserDashboard({ session }) {
   }
 
   const loadUserMatrices = async () => {
-    try {
-      const { data: { session: currentSession } } = await supabase.auth.getSession()
-      if (!currentSession) return
-
-      console.log('Current user ID:', currentSession.user.id)
-
-      // Get all spots owned by this user
-      const { data: userSpots, error: spotsError } = await supabase
-        .from('matrix_spots')
-        .select('*')
-        .eq('user_id', currentSession.user.id)
-
-      console.log('User spots found:', userSpots?.length)
-      console.log('User spots:', userSpots)
-      
-      if (spotsError) {
-        console.error('Error fetching spots:', spotsError)
-      }
-
-      if (!userSpots || userSpots.length === 0) {
-        console.log('No spots found for user')
-        setUserMatrices([])
-        return
-      }
-
-      // For each spot, get its downline
-      const matrices = []
-      
-      for (const spot of userSpots) {
-        console.log('Processing spot:', spot.id, 'level:', spot.level, 'position:', spot.position)
-        
-        // Get all spots in the same matrix
-        const { data: allSpots } = await supabase
-          .from('matrix_spots')
-          .select('*')
-          .eq('matrix_id', spot.matrix_id)
-
-        console.log('All spots in matrix:', allSpots?.length)
-
-        // Build downline for this spot
-        const downline = []
-        
-        function findChildren(parentId, currentLevel) {
-          if (currentLevel > 4) return
-          const children = allSpots?.filter(s => s.parent_id === parentId) || []
-          for (const child of children) {
-            downline.push({
-              ...child,
-              relativeLevel: currentLevel,
-              isSelf: child.user_id === currentSession.user.id
-            })
-            findChildren(child.id, currentLevel + 1)
-          }
-        }
-        
-        findChildren(spot.id, 1)
-        
-        const level1 = downline.filter(d => d.relativeLevel === 1)
-        const level2 = downline.filter(d => d.relativeLevel === 2)
-        const level3 = downline.filter(d => d.relativeLevel === 3)
-        const level4 = downline.filter(d => d.relativeLevel === 4)
-        
-        matrices.push({
-          spotId: spot.id,
-          level: spot.level,
-          position: spot.position,
-          matrixId: spot.matrix_id,
-          isOriginal: spot.level === 0 && spot.position === 1,
-          downline: downline,
-          level1: level1,
-          level2: level2,
-          level3: level3,
-          level4: level4,
-          filledCount: 1 + level1.length + level2.length + level3.length + level4.length
-        })
-      }
-      
-      console.log('Matrices built:', matrices.length)
-      setUserMatrices(matrices)
-      
-      // Auto-expand the original matrix
-      const originalMatrix = matrices.find(m => m.isOriginal)
-      if (originalMatrix && !expandedMatrices.has(originalMatrix.spotId)) {
-        setExpandedMatrices(new Set([originalMatrix.spotId]))
-      }
-    } catch (error) {
-      console.error('Error loading matrices:', error)
+  try {
+    console.log('=== LOADING USER MATRICES ===')
+    
+    const { data: { session: currentSession } } = await supabase.auth.getSession()
+    if (!currentSession) {
+      console.log('No session found')
+      return
     }
+
+    console.log('User ID:', currentSession.user.id)
+
+    // Direct query to get user's spots
+    const { data: userSpots, error: spotsError } = await supabase
+      .from('matrix_spots')
+      .select('*')
+      .eq('user_id', currentSession.user.id)
+
+    console.log('Query result:', { userSpots, spotsError })
+
+    if (spotsError) {
+      console.error('Error fetching spots:', spotsError)
+      return
+    }
+
+    if (!userSpots || userSpots.length === 0) {
+      console.log('No spots found for this user')
+      setUserMatrices([])
+      return
+    }
+
+    console.log(`Found ${userSpots.length} spots for user`)
+
+    // Build matrices array
+    const matrices = []
+    for (const spot of userSpots) {
+      console.log(`Processing spot: Level ${spot.level}, Position ${spot.position}`)
+      
+      matrices.push({
+        spotId: spot.id,
+        level: spot.level,
+        position: spot.position,
+        matrixId: spot.matrix_id,
+        isOriginal: spot.level === 0 && spot.position === 1,
+        level1: [],
+        level2: [],
+        level3: [],
+        level4: [],
+        filledCount: 1
+      })
+    }
+
+    console.log('Matrices to display:', matrices.length)
+    setUserMatrices(matrices)
+
+    // Auto-expand original matrix
+    const originalMatrix = matrices.find(m => m.isOriginal)
+    if (originalMatrix) {
+      setExpandedMatrices(new Set([originalMatrix.spotId]))
+    }
+  } catch (error) {
+    console.error('Error in loadUserMatrices:', error)
   }
+}
 
   const toggleMatrix = (spotId) => {
     const newSet = new Set(expandedMatrices)
@@ -240,60 +214,106 @@ function UserDashboard({ session }) {
 
   // Buy Points (Mock)
   const handleBuyPoints = async () => {
-    if (!buyAmount || parseInt(buyAmount) <= 0) {
-      alert('Please enter a valid amount')
-      return
-    }
-
-    setBuyLoading(true)
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
-      const newPoints = (userData?.master_points || 0) + parseInt(buyAmount)
-      setUserData({ ...userData, master_points: newPoints })
-      setStats({ ...stats, master_points: newPoints })
-      
-      alert(`✅ Added ${parseInt(buyAmount).toLocaleString()} points to your account!`)
-      setShowBuyModal(false)
-      setBuyAmount('')
-      loadUserData()
-    } catch (error) {
-      alert('Error processing purchase')
-    } finally {
-      setBuyLoading(false)
-    }
+  if (!buyAmount || parseInt(buyAmount) <= 0) {
+    alert('Please enter a valid amount')
+    return
   }
+
+  setBuyLoading(true)
+  try {
+    const { data: { session: currentSession } } = await supabase.auth.getSession()
+    
+    // Get current user data
+    const { data: currentUser } = await supabase
+      .from('users')
+      .select('master_points')
+      .eq('id', currentSession.user.id)
+      .single()
+    
+    const newPoints = (currentUser?.master_points || 0) + parseInt(buyAmount)
+    
+    // Update database
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({ master_points: newPoints })
+      .eq('id', currentSession.user.id)
+    
+    if (updateError) throw updateError
+    
+    // Record transaction
+    await supabase.from('transactions').insert({
+      user_id: currentSession.user.id,
+      user_name: userData?.name,
+      type: 'points_purchase',
+      amount: parseInt(buyAmount),
+      currency: 'USD'
+    })
+    
+    alert(`✅ Added ${parseInt(buyAmount).toLocaleString()} points!`)
+    setShowBuyModal(false)
+    setBuyAmount('')
+    loadUserData()
+  } catch (error) {
+    console.error('Error:', error)
+    alert('Error processing purchase')
+  } finally {
+    setBuyLoading(false)
+  }
+}
 
   // Cash Out (Mock)
   const handleCashout = async () => {
-    if (!cashoutAmount || parseInt(cashoutAmount) <= 0) {
-      alert('Please enter a valid amount')
-      return
-    }
+  if (!cashoutAmount || parseInt(cashoutAmount) <= 0) {
+    alert('Please enter a valid amount')
+    return
+  }
 
-    if (parseInt(cashoutAmount) > (userData?.master_points || 0)) {
+  setCashoutLoading(true)
+  try {
+    const { data: { session: currentSession } } = await supabase.auth.getSession()
+    
+    // Get current user data
+    const { data: currentUser } = await supabase
+      .from('users')
+      .select('master_points')
+      .eq('id', currentSession.user.id)
+      .single()
+    
+    if (parseInt(cashoutAmount) > (currentUser?.master_points || 0)) {
       alert('Insufficient points')
       return
     }
-
-    setCashoutLoading(true)
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
-      const newPoints = (userData?.master_points || 0) - parseInt(cashoutAmount)
-      setUserData({ ...userData, master_points: newPoints })
-      setStats({ ...stats, master_points: newPoints })
-      
-      alert(`✅ Cashout request submitted for ${parseInt(cashoutAmount).toLocaleString()} points.`)
-      setShowCashoutModal(false)
-      setCashoutAmount('')
-      loadUserData()
-    } catch (error) {
-      alert('Error processing cashout')
-    } finally {
-      setCashoutLoading(false)
-    }
+    
+    const newPoints = (currentUser?.master_points || 0) - parseInt(cashoutAmount)
+    
+    // Update database
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({ master_points: newPoints })
+      .eq('id', currentSession.user.id)
+    
+    if (updateError) throw updateError
+    
+    // Record transaction
+    await supabase.from('transactions').insert({
+      user_id: currentSession.user.id,
+      user_name: userData?.name,
+      type: 'cashout_request',
+      amount: -parseInt(cashoutAmount),
+      description: 'Cashout request - pending approval'
+    })
+    
+    alert(`✅ Cashout request for ${parseInt(cashoutAmount).toLocaleString()} points submitted!`)
+    setShowCashoutModal(false)
+    setCashoutAmount('')
+    loadUserData()
+  } catch (error) {
+    console.error('Error:', error)
+    alert('Error processing cashout')
+  } finally {
+    setCashoutLoading(false)
   }
+}
 
   const searchUsers = async () => {
     if (!searchQuery.trim() || searchQuery.length < 2) {
