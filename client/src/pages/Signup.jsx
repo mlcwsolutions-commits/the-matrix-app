@@ -1,13 +1,16 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
 function Signup() {
+  const [searchParams] = useSearchParams()
+  const urlReferralCode = searchParams.get('ref')
+  
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [referralCode, setReferralCode] = useState('')
+  const [referralCode, setReferralCode] = useState(urlReferralCode || '')
   const [randomAssign, setRandomAssign] = useState(false)
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -15,6 +18,16 @@ function Signup() {
   const [step, setStep] = useState('form')
 
   const EDGE_FUNCTION_URL = 'https://iqctlwnlesnimzzatwry.supabase.co/functions/v1/create-user'
+
+  // Determine if user has a referral code (from URL or manual entry)
+  const hasReferralCode = referralCode && referralCode.trim() !== ''
+
+  // Clear random assignment when a referral code is entered
+  useEffect(() => {
+    if (hasReferralCode && randomAssign) {
+      setRandomAssign(false)
+    }
+  }, [referralCode])
 
   const handleSignup = async (e) => {
     e.preventDefault()
@@ -39,7 +52,8 @@ function Signup() {
       return
     }
 
-    if (!referralCode && !randomAssign) {
+    // Validation: Must have either a referral code OR random assignment
+    if (!hasReferralCode && !randomAssign) {
       setError('Please enter a referral code or check random assignment')
       setLoading(false)
       return
@@ -59,18 +73,19 @@ function Signup() {
 
       if (!authData.user) throw new Error('User creation failed')
 
-      // Prepare referral code for edge function
+      // Prepare data for Edge Function
       let finalReferralCode = referralCode
       let finalRandomAssign = randomAssign
 
-      if (randomAssign) {
-        finalReferralCode = ''  // Clear referral code when random assignment is checked
+      // If user has a referral code, random assignment is ignored
+      if (hasReferralCode) {
+        finalRandomAssign = false
       }
 
-      // Get the session to obtain a valid token
+      // Get the session for authorization
       const { data: { session: currentSession } } = await supabase.auth.getSession()
 
-      // Step 2: Call Edge Function to create user in database and place in matrix
+      // Step 2: Call Edge Function
       const response = await fetch(EDGE_FUNCTION_URL, {
         method: 'POST',
         headers: {
@@ -110,7 +125,7 @@ function Signup() {
         {step === 'processing' && (
           <div style={{ textAlign: 'center', padding: '40px' }}>
             <div style={{ display: 'inline-block', width: '40px', height: '40px', border: '4px solid #00ff88', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-            <p style={{ color: 'white', marginTop: '15px' }}>Creating your account and placing you in the matrix...</p>
+            <p style={{ color: 'white', marginTop: '15px' }}>Creating your account...</p>
             <style>{`
               @keyframes spin {
                 to { transform: rotate(360deg); }
@@ -171,22 +186,30 @@ function Signup() {
                 type="text"
                 value={referralCode}
                 onChange={(e) => setReferralCode(e.target.value)}
-                placeholder="Optional"
+                placeholder="Enter referral code (if you have one)"
                 style={{ width: '100%', padding: '10px', borderRadius: '5px', border: 'none' }}
               />
+              {urlReferralCode && (
+                <p style={{ color: '#00ff88', fontSize: '12px', marginTop: '5px' }}>
+                  ✅ Referral code from link: {urlReferralCode}
+                </p>
+              )}
             </div>
 
-            <div style={{ marginBottom: '15px', background: 'rgba(255,165,0,0.15)', padding: '12px', borderRadius: '8px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', color: '#ffa502' }}>
-                <input
-                  type="checkbox"
-                  checked={randomAssign}
-                  onChange={(e) => setRandomAssign(e.target.checked)}
-                  style={{ marginRight: '10px', width: '18px', height: '18px' }}
-                />
-                <span>⚠️ Don't have a referral code? Random assignment (irreversible)</span>
-              </label>
-            </div>
+            {/* Only show random assignment checkbox if user has NO referral code */}
+            {!hasReferralCode && (
+              <div style={{ marginBottom: '15px', background: 'rgba(255,165,0,0.15)', padding: '12px', borderRadius: '8px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', color: '#ffa502' }}>
+                  <input
+                    type="checkbox"
+                    checked={randomAssign}
+                    onChange={(e) => setRandomAssign(e.target.checked)}
+                    style={{ marginRight: '10px', width: '18px', height: '18px' }}
+                  />
+                  <span>⚠️ Don't have a referral code? Random assignment (irreversible)</span>
+                </label>
+              </div>
+            )}
 
             <div style={{ marginBottom: '15px' }}>
               <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>

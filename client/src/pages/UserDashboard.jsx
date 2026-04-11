@@ -37,6 +37,16 @@ function UserDashboard({ session }) {
   const [transferLoading, setTransferLoading] = useState(false)
   const [searchLoading, setSearchLoading] = useState(false)
 
+  // Buy Points state
+  const [showBuyModal, setShowBuyModal] = useState(false)
+  const [buyAmount, setBuyAmount] = useState('')
+  const [buyLoading, setBuyLoading] = useState(false)
+
+  // Cash Out state
+  const [showCashoutModal, setShowCashoutModal] = useState(false)
+  const [cashoutAmount, setCashoutAmount] = useState('')
+  const [cashoutLoading, setCashoutLoading] = useState(false)
+
   const EDGE_FUNCTION_URL = 'https://iqctlwnlesnimzzatwry.supabase.co/functions/v1/get-user-data'
   const BUY_SPONSORED_URL = 'https://iqctlwnlesnimzzatwry.supabase.co/functions/v1/buy-self-sponsored'
   const SEARCH_USERS_URL = 'https://iqctlwnlesnimzzatwry.supabase.co/functions/v1/search-users'
@@ -158,120 +168,197 @@ function UserDashboard({ session }) {
     }
   }
 
-  const searchUsers = async () => {
-  if (!searchQuery.trim() || searchQuery.length < 2) {
-    setSearchResults([])
-    return
-  }
-
-  setSearchLoading(true)
-  try {
-    const { data: { session: currentSession } } = await supabase.auth.getSession()
-    
-    const response = await fetch(SEARCH_USERS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query: searchQuery,
-        excludeUserId: currentSession.user.id
-      })
-    })
-
-    const result = await response.json()
-    if (result.success) {
-      setSearchResults(result.users)
-    }
-  } catch (error) {
-    console.error('Search error:', error)
-  } finally {
-    setSearchLoading(false)
-  }
-}
-
-const selectRecipient = (user) => {
-  setSelectedRecipient(user)
-  setSearchQuery('')
-  setSearchResults([])
-}
-
-const openTransferModal = () => {
-  setSelectedRecipient(null)
-  setSearchQuery('')
-  setSearchResults([])
-  setTransferAmount('')
-  setTransferDescription('')
-  setTransferPassword('')
-  setShowTransferModal(true)
-}
-
-const openVerifyModal = () => {
-  if (!selectedRecipient) {
-    alert('Please select a recipient')
-    return
-  }
-  if (!transferAmount || parseInt(transferAmount) <= 0) {
-    alert('Please enter a valid amount')
-    return
-  }
-  if (parseInt(transferAmount) > (userData?.master_points || 0)) {
-    alert('Insufficient points')
-    return
-  }
-  setShowVerifyModal(true)
-}
-
-const confirmTransfer = async () => {
-  if (!transferPassword) {
-    alert('Please enter your password')
-    return
-  }
-
-  setTransferLoading(true)
-  try {
-    const { data: { session: currentSession } } = await supabase.auth.getSession()
-    
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: currentSession.user.email,
-      password: transferPassword
-    })
-
-    if (signInError) {
-      alert('Incorrect password. Transfer cancelled.')
-      setShowVerifyModal(false)
-      setTransferLoading(false)
+  // Buy Points (Mock)
+  const handleBuyPoints = async () => {
+    if (!buyAmount || parseInt(buyAmount) <= 0) {
+      alert('Please enter a valid amount')
       return
     }
 
-    const response = await fetch(TRANSFER_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        fromUserId: currentSession.user.id,
-        toUserCode: selectedRecipient.referral_code,
-        amount: parseInt(transferAmount),
-        description: transferDescription
-      })
-    })
-
-    const result = await response.json()
-    if (result.success) {
-      alert(`✅ ${result.message}`)
-      setShowTransferModal(false)
-      setShowVerifyModal(false)
-      setSelectedRecipient(null)
-      setTransferAmount('')
-      setTransferDescription('')
-      setTransferPassword('')
+    setBuyLoading(true)
+    try {
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      // Add points to user
+      const newPoints = (userData?.master_points || 0) + parseInt(buyAmount)
+      setUserData({ ...userData, master_points: newPoints })
+      setStats({ ...stats, master_points: newPoints })
+      
+      // Add mock transaction
+      const mockTransaction = {
+        timestamp: new Date().toISOString(),
+        type: 'points_purchase_mock',
+        amount: parseInt(buyAmount)
+      }
+      setTransactions([mockTransaction, ...transactions])
+      
+      alert(`✅ Added ${parseInt(buyAmount).toLocaleString()} points to your account!`)
+      setShowBuyModal(false)
+      setBuyAmount('')
       loadUserData()
-    } else {
-      alert(`❌ ${result.message}`)
+    } catch (error) {
+      alert('Error processing purchase')
+    } finally {
+      setBuyLoading(false)
     }
-  } catch (error) {
-    alert('Error processing transfer')
-  } finally {
-    setTransferLoading(false)
   }
-}
+
+  // Cash Out (Mock)
+  const handleCashout = async () => {
+    if (!cashoutAmount || parseInt(cashoutAmount) <= 0) {
+      alert('Please enter a valid amount')
+      return
+    }
+
+    if (parseInt(cashoutAmount) > (userData?.master_points || 0)) {
+      alert('Insufficient points')
+      return
+    }
+
+    setCashoutLoading(true)
+    try {
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      // Remove points from user
+      const newPoints = (userData?.master_points || 0) - parseInt(cashoutAmount)
+      setUserData({ ...userData, master_points: newPoints })
+      setStats({ ...stats, master_points: newPoints })
+      
+      // Add mock transaction
+      const mockTransaction = {
+        timestamp: new Date().toISOString(),
+        type: 'cashout_mock',
+        amount: -parseInt(cashoutAmount)
+      }
+      setTransactions([mockTransaction, ...transactions])
+      
+      alert(`✅ Cashout request submitted for ${parseInt(cashoutAmount).toLocaleString()} points. Processing will take 1-3 business days.`)
+      setShowCashoutModal(false)
+      setCashoutAmount('')
+      loadUserData()
+    } catch (error) {
+      alert('Error processing cashout')
+    } finally {
+      setCashoutLoading(false)
+    }
+  }
+
+  const searchUsers = async () => {
+    if (!searchQuery.trim() || searchQuery.length < 2) {
+      setSearchResults([])
+      return
+    }
+
+    setSearchLoading(true)
+    try {
+      const { data: { session: currentSession } } = await supabase.auth.getSession()
+      
+      const response = await fetch(SEARCH_USERS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: searchQuery,
+          excludeUserId: currentSession.user.id
+        })
+      })
+
+      const result = await response.json()
+      if (result.success) {
+        setSearchResults(result.users)
+      }
+    } catch (error) {
+      console.error('Search error:', error)
+    } finally {
+      setSearchLoading(false)
+    }
+  }
+
+  const selectRecipient = (user) => {
+    setSelectedRecipient(user)
+    setSearchQuery('')
+    setSearchResults([])
+  }
+
+  const openTransferModal = () => {
+    setSelectedRecipient(null)
+    setSearchQuery('')
+    setSearchResults([])
+    setTransferAmount('')
+    setTransferDescription('')
+    setTransferPassword('')
+    setShowTransferModal(true)
+  }
+
+  const openVerifyModal = () => {
+    if (!selectedRecipient) {
+      alert('Please select a recipient')
+      return
+    }
+    if (!transferAmount || parseInt(transferAmount) <= 0) {
+      alert('Please enter a valid amount')
+      return
+    }
+    if (parseInt(transferAmount) > (userData?.master_points || 0)) {
+      alert('Insufficient points')
+      return
+    }
+    setShowVerifyModal(true)
+  }
+
+  const confirmTransfer = async () => {
+    if (!transferPassword) {
+      alert('Please enter your password')
+      return
+    }
+
+    setTransferLoading(true)
+    try {
+      const { data: { session: currentSession } } = await supabase.auth.getSession()
+      
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: currentSession.user.email,
+        password: transferPassword
+      })
+
+      if (signInError) {
+        alert('Incorrect password. Transfer cancelled.')
+        setShowVerifyModal(false)
+        setTransferLoading(false)
+        return
+      }
+
+      const response = await fetch(TRANSFER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fromUserId: currentSession.user.id,
+          toUserCode: selectedRecipient.referral_code,
+          amount: parseInt(transferAmount),
+          description: transferDescription
+        })
+      })
+
+      const result = await response.json()
+      if (result.success) {
+        alert(`✅ ${result.message}`)
+        setShowTransferModal(false)
+        setShowVerifyModal(false)
+        setSelectedRecipient(null)
+        setTransferAmount('')
+        setTransferDescription('')
+        setTransferPassword('')
+        loadUserData()
+      } else {
+        alert(`❌ ${result.message}`)
+      }
+    } catch (error) {
+      alert('Error processing transfer')
+    } finally {
+      setTransferLoading(false)
+    }
+  }
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -400,7 +487,6 @@ const confirmTransfer = async () => {
         <div style={{ background: '#1a1a3a', padding: '20px', borderRadius: '10px', marginBottom: '30px' }}>
           <h2 style={{ color: '#00ccff', marginBottom: '20px', textAlign: 'center' }}>🔷 YOUR MATRIX DOWNLINE</h2>
           
-          {/* Level 0 - You */}
           <div style={{ textAlign: 'center', marginBottom: '30px' }}>
             <div style={{ display: 'inline-block', background: '#0a0a2a', padding: '15px 30px', borderRadius: '10px', border: '2px solid #ffd700' }}>
               <div style={{ fontSize: '12px', color: '#888' }}>Level 0</div>
@@ -408,7 +494,6 @@ const confirmTransfer = async () => {
             </div>
           </div>
 
-          {/* Level 1 */}
           <div style={{ marginBottom: '30px' }}>
             <div style={{ textAlign: 'center', marginBottom: '10px' }}>
               <span style={{ color: '#ffa502', fontWeight: 'bold' }}>LEVEL 1</span>
@@ -420,7 +505,6 @@ const confirmTransfer = async () => {
             </div>
           </div>
 
-          {/* Level 2 */}
           <div style={{ marginBottom: '30px' }}>
             <div style={{ textAlign: 'center', marginBottom: '10px' }}>
               <span style={{ color: '#ffa502', fontWeight: 'bold' }}>LEVEL 2</span>
@@ -430,7 +514,6 @@ const confirmTransfer = async () => {
             {renderLevel2Summary()}
           </div>
 
-          {/* Level 3 */}
           <div style={{ marginBottom: '30px' }}>
             <div style={{ textAlign: 'center', marginBottom: '10px' }}>
               <span style={{ color: '#ffa502', fontWeight: 'bold' }}>LEVEL 3</span>
@@ -440,7 +523,6 @@ const confirmTransfer = async () => {
             {renderLevel3Summary()}
           </div>
 
-          {/* Level 4 */}
           <div style={{ marginBottom: '10px' }}>
             <div style={{ textAlign: 'center', marginBottom: '10px' }}>
               <span style={{ color: '#ffa502', fontWeight: 'bold' }}>LEVEL 4</span>
@@ -457,7 +539,6 @@ const confirmTransfer = async () => {
           <div style={{ background: '#1a1a3a', padding: '20px', borderRadius: '10px' }}>
             <h2 style={{ color: '#00ccff', marginBottom: '20px' }}>⚡ Your Actions</h2>
             
-            {/* Referral Code Section */}
             <div style={{ marginBottom: '20px' }}>
               <p style={{ color: '#aaa', marginBottom: '8px' }}>Your Referral Code:</p>
               <code style={{ display: 'block', background: '#0a0a2a', padding: '10px', borderRadius: '5px', textAlign: 'center', color: '#00ff88', marginBottom: '10px' }}>
@@ -507,11 +588,25 @@ const confirmTransfer = async () => {
             </button>
 
             <button 
-  onClick={openTransferModal}
-  style={{ width: '100%', padding: '12px', background: '#9b59b6', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '10px', color: 'white' }}
->
-  💸 Transfer Points to Another User
-</button>
+              onClick={() => setShowBuyModal(true)}
+              style={{ width: '100%', padding: '12px', background: '#00aaff', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '10px', color: 'white' }}
+            >
+              💰 Buy Points
+            </button>
+
+            <button 
+              onClick={() => setShowCashoutModal(true)}
+              style={{ width: '100%', padding: '12px', background: '#ffaa00', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '10px', color: '#0a0a2a' }}
+            >
+              💸 Cash Out
+            </button>
+
+            <button 
+              onClick={openTransferModal}
+              style={{ width: '100%', padding: '12px', background: '#9b59b6', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '10px', color: 'white' }}
+            >
+              💸 Transfer Points to Another User
+            </button>
 
             <button 
               onClick={() => {
@@ -572,6 +667,95 @@ const confirmTransfer = async () => {
           <p>Together We Will All Prosper</p>
         </div>
       </div>
+
+      {/* Buy Points Modal */}
+      {showBuyModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.8)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#1a1a3a', padding: '30px', borderRadius: '10px', maxWidth: '450px', width: '90%', border: '2px solid #00aaff' }}>
+            <h2 style={{ color: '#00aaff', marginBottom: '20px' }}>💰 Buy Points</h2>
+            
+            <div style={{ marginBottom: '20px' }}>
+              <p style={{ color: 'white', marginBottom: '10px' }}>Your current balance: <strong style={{ color: '#00ff88' }}>{userData?.master_points?.toLocaleString()} points</strong></p>
+              <p style={{ color: '#aaa', marginBottom: '10px', fontSize: '12px' }}>1 point = $0.005 USD / $0.01 BBD</p>
+            </div>
+            
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ color: '#aaa', display: 'block', marginBottom: '5px' }}>Points to purchase</label>
+              <input
+                type="number"
+                value={buyAmount}
+                onChange={(e) => setBuyAmount(e.target.value)}
+                placeholder="Enter amount"
+                style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #00aaff', background: '#0a0a2a', color: 'white' }}
+              />
+              <p style={{ color: '#888', fontSize: '12px', marginTop: '5px' }}>Min: 1,000 points | Max: 1,000,000 points</p>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={handleBuyPoints}
+                disabled={buyLoading}
+                style={{ flex: 1, padding: '12px', background: '#00aaff', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: buyLoading ? 'not-allowed' : 'pointer', color: 'white' }}
+              >
+                {buyLoading ? 'Processing...' : 'Confirm Purchase'}
+              </button>
+              <button
+                onClick={() => setShowBuyModal(false)}
+                style={{ flex: 1, padding: '12px', background: '#333', border: 'none', borderRadius: '5px', color: 'white', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cash Out Modal */}
+      {showCashoutModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.8)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#1a1a3a', padding: '30px', borderRadius: '10px', maxWidth: '450px', width: '90%', border: '2px solid #ffaa00' }}>
+            <h2 style={{ color: '#ffaa00', marginBottom: '20px' }}>💸 Cash Out</h2>
+            
+            <div style={{ marginBottom: '20px' }}>
+              <p style={{ color: 'white', marginBottom: '10px' }}>Your current balance: <strong style={{ color: '#00ff88' }}>{userData?.master_points?.toLocaleString()} points</strong></p>
+              <p style={{ color: '#aaa', marginBottom: '10px', fontSize: '12px' }}>1 point = $0.005 USD / $0.01 BBD</p>
+              <p style={{ color: '#ffaa00', fontSize: '12px' }}>Minimum cashout: 10,000 points</p>
+            </div>
+            
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ color: '#aaa', display: 'block', marginBottom: '5px' }}>Points to cash out</label>
+              <input
+                type="number"
+                value={cashoutAmount}
+                onChange={(e) => setCashoutAmount(e.target.value)}
+                placeholder="Enter amount"
+                style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ffaa00', background: '#0a0a2a', color: 'white' }}
+              />
+            </div>
+            
+            <div style={{ marginBottom: '20px', background: '#0a0a2a', padding: '10px', borderRadius: '5px' }}>
+              <p style={{ color: '#aaa', marginBottom: '5px' }}>Estimated value:</p>
+              <p style={{ color: '#00ff88' }}>${((parseInt(cashoutAmount) || 0) * 0.005).toFixed(2)} USD / ${((parseInt(cashoutAmount) || 0) * 0.01).toFixed(2)} BBD</p>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={handleCashout}
+                disabled={cashoutLoading}
+                style={{ flex: 1, padding: '12px', background: '#ffaa00', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: cashoutLoading ? 'not-allowed' : 'pointer', color: '#0a0a2a' }}
+              >
+                {cashoutLoading ? 'Processing...' : 'Request Cashout'}
+              </button>
+              <button
+                onClick={() => setShowCashoutModal(false)}
+                style={{ flex: 1, padding: '12px', background: '#333', border: 'none', borderRadius: '5px', color: 'white', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Transfer Modal */}
       {showTransferModal && (
