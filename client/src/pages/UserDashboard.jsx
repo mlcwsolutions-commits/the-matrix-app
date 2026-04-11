@@ -9,17 +9,14 @@ function UserDashboard({ session }) {
   const [userData, setUserData] = useState(null)
   const [userMatrices, setUserMatrices] = useState([])
   const [expandedMatrices, setExpandedMatrices] = useState(new Set())
+  const [transactions, setTransactions] = useState([])
   const [stats, setStats] = useState({
     master_points: 0,
     commission_earned: 0,
-    global_level: 'Root',
-    matrix_number: 1,
     spots_filled: 0,
     total_spots: 341,
-    recovery_fund: 0,
-    downline_count: 0
+    recovery_fund: 0
   })
-  const [transactions, setTransactions] = useState([])
 
   // Transfer state
   const [showTransferModal, setShowTransferModal] = useState(false)
@@ -79,7 +76,6 @@ function UserDashboard({ session }) {
 
       if (result.success) {
         const user = result.user
-        const matrix = result.currentMatrix
         const recovery = result.recoveryFund
         const txs = result.transactions || []
 
@@ -87,12 +83,9 @@ function UserDashboard({ session }) {
         setStats({
           master_points: user.master_points || 0,
           commission_earned: user.commission_earned || 0,
-          global_level: 'Root',
-          matrix_number: matrix?.matrix_number || 1,
           spots_filled: result.totalSpotsFilled || 0,
           total_spots: result.totalSpots || 341,
-          recovery_fund: recovery || 0,
-          downline_count: result.downlineCount || 0
+          recovery_fund: recovery || 0
         })
         setTransactions(txs)
       }
@@ -108,30 +101,45 @@ function UserDashboard({ session }) {
       const { data: { session: currentSession } } = await supabase.auth.getSession()
       if (!currentSession) return
 
+      console.log('Current user ID:', currentSession.user.id)
+
       // Get all spots owned by this user
-      const { data: userSpots } = await supabase
+      const { data: userSpots, error: spotsError } = await supabase
         .from('matrix_spots')
-        .select('id, level, position, matrix_id, parent_id')
+        .select('*')
         .eq('user_id', currentSession.user.id)
-        .order('level', { ascending: true })
-        .order('position', { ascending: true })
 
-      if (!userSpots || userSpots.length === 0) return
+      console.log('User spots found:', userSpots?.length)
+      console.log('User spots:', userSpots)
+      
+      if (spotsError) {
+        console.error('Error fetching spots:', spotsError)
+      }
 
-      // For each spot, get its downline (people below it)
+      if (!userSpots || userSpots.length === 0) {
+        console.log('No spots found for user')
+        setUserMatrices([])
+        return
+      }
+
+      // For each spot, get its downline
       const matrices = []
       
       for (const spot of userSpots) {
+        console.log('Processing spot:', spot.id, 'level:', spot.level, 'position:', spot.position)
+        
         // Get all spots in the same matrix
         const { data: allSpots } = await supabase
           .from('matrix_spots')
-          .select('id, level, position, user_id, user_name, parent_id')
+          .select('*')
           .eq('matrix_id', spot.matrix_id)
 
-        // Build the downline tree for this spot
+        console.log('All spots in matrix:', allSpots?.length)
+
+        // Build downline for this spot
         const downline = []
         
-        function collectDescendants(parentId, currentLevel, maxLevel) {
+        function findChildren(parentId, currentLevel) {
           if (currentLevel > 4) return
           const children = allSpots?.filter(s => s.parent_id === parentId) || []
           for (const child of children) {
@@ -140,13 +148,12 @@ function UserDashboard({ session }) {
               relativeLevel: currentLevel,
               isSelf: child.user_id === currentSession.user.id
             })
-            collectDescendants(child.id, currentLevel + 1, maxLevel)
+            findChildren(child.id, currentLevel + 1)
           }
         }
         
-        collectDescendants(spot.id, 1, 4)
+        findChildren(spot.id, 1)
         
-        // Organize by relative level
         const level1 = downline.filter(d => d.relativeLevel === 1)
         const level2 = downline.filter(d => d.relativeLevel === 2)
         const level3 = downline.filter(d => d.relativeLevel === 3)
@@ -167,15 +174,16 @@ function UserDashboard({ session }) {
         })
       }
       
+      console.log('Matrices built:', matrices.length)
       setUserMatrices(matrices)
       
-      // Auto-expand the original matrix (level 0, position 1)
+      // Auto-expand the original matrix
       const originalMatrix = matrices.find(m => m.isOriginal)
       if (originalMatrix && !expandedMatrices.has(originalMatrix.spotId)) {
-        setExpandedMatrices(prev => new Set([...prev, originalMatrix.spotId]))
+        setExpandedMatrices(new Set([originalMatrix.spotId]))
       }
     } catch (error) {
-      console.error('Error loading user matrices:', error)
+      console.error('Error loading matrices:', error)
     }
   }
 
@@ -408,19 +416,17 @@ function UserDashboard({ session }) {
     navigate('/login')
   }
 
-  // Render a single matrix visualization
   const renderMatrixVisualization = (matrix) => {
     const isExpanded = expandedMatrices.has(matrix.spotId)
     
-    // Helper to render level 1 spots
     const renderLevel1Spots = () => {
       const spots = []
       for (let pos = 1; pos <= 4; pos++) {
         const occupant = matrix.level1.find(s => s.position === pos)
         spots.push(
           <div key={pos} style={{
-            width: '80px',
-            height: '80px',
+            width: '70px',
+            height: '70px',
             background: occupant ? 'rgba(0, 255, 136, 0.15)' : 'rgba(255, 255, 255, 0.05)',
             border: occupant ? '2px solid #00ff88' : '2px solid rgba(0, 255, 255, 0.2)',
             borderRadius: '10px',
@@ -433,11 +439,11 @@ function UserDashboard({ session }) {
           }}>
             <div style={{ position: 'absolute', top: '5px', left: '5px', fontSize: '10px', color: '#888' }}>{pos}</div>
             {occupant ? (
-              <div style={{ color: occupant.isSelf ? '#ffa502' : '#00ff88', fontSize: '12px', fontWeight: 'bold' }}>
-                {occupant.isSelf ? '👤 SELF' : occupant.user_name?.substring(0, 6)}
+              <div style={{ color: occupant.isSelf ? '#ffa502' : '#00ff88', fontSize: '11px', fontWeight: 'bold' }}>
+                {occupant.isSelf ? 'SELF' : occupant.user_name?.substring(0, 6)}
               </div>
             ) : (
-              <div style={{ color: '#ff6666', fontSize: '11px' }}>Empty</div>
+              <div style={{ color: '#ff6666', fontSize: '10px' }}>Empty</div>
             )}
           </div>
         )
@@ -445,101 +451,64 @@ function UserDashboard({ session }) {
       return spots
     }
 
-    const level2Count = matrix.level2.length
-    const level3Count = matrix.level3.length
-    const level4Count = matrix.level4.length
-
     return (
       <div key={matrix.spotId} style={{ marginBottom: '20px', border: '1px solid rgba(0, 255, 255, 0.2)', borderRadius: '10px', overflow: 'hidden' }}>
-        {/* Matrix Header */}
         <div 
           onClick={() => toggleMatrix(matrix.spotId)}
           style={{
             background: matrix.isOriginal ? '#1a3a3a' : '#2a2a4a',
-            padding: '15px',
+            padding: '12px 15px',
             cursor: 'pointer',
             display: 'flex',
             justifyContent: 'space-between',
-            alignItems: 'center',
-            borderBottom: isExpanded ? '1px solid #00ff88' : 'none'
+            alignItems: 'center'
           }}
         >
           <div>
             <span style={{ color: '#00ff88', fontWeight: 'bold' }}>
               {matrix.isOriginal ? '⭐ Original Matrix' : '📌 Self-Sponsored Matrix'}
             </span>
-            <span style={{ color: '#888', fontSize: '12px', marginLeft: '15px' }}>
-              Level {matrix.level}, Position {matrix.position}
+            <span style={{ color: '#888', fontSize: '11px', marginLeft: '10px' }}>
+              Level {matrix.level}, Pos {matrix.position}
             </span>
-            <span style={{ color: '#ffa502', fontSize: '12px', marginLeft: '15px' }}>
-              {matrix.filledCount}/85 spots filled
+            <span style={{ color: '#ffa502', fontSize: '11px', marginLeft: '10px' }}>
+              {matrix.filledCount}/85 spots
             </span>
           </div>
-          <div style={{ color: '#00ccff', fontSize: '20px' }}>
+          <div style={{ color: '#00ccff', fontSize: '18px' }}>
             {isExpanded ? '▼' : '▶'}
           </div>
         </div>
         
-        {/* Matrix Content (expandable) */}
         {isExpanded && (
-          <div style={{ padding: '20px' }}>
-            {/* Level 0 - You (this spot) */}
-            <div style={{ textAlign: 'center', marginBottom: '30px' }}>
-              <div style={{ display: 'inline-block', background: '#0a0a2a', padding: '15px 30px', borderRadius: '10px', border: '2px solid #ffd700' }}>
-                <div style={{ fontSize: '12px', color: '#888' }}>Level 0 (Your Position)</div>
-                <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#ffd700' }}>👤 YOU</div>
+          <div style={{ padding: '15px' }}>
+            <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+              <div style={{ display: 'inline-block', background: '#0a0a2a', padding: '10px 20px', borderRadius: '10px', border: '2px solid #ffd700' }}>
+                <div style={{ fontSize: '10px', color: '#888' }}>Level 0</div>
+                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#ffd700' }}>👤 YOU</div>
               </div>
             </div>
             
-            {/* Level 1 */}
-            <div style={{ marginBottom: '30px' }}>
+            <div style={{ marginBottom: '20px' }}>
               <div style={{ textAlign: 'center', marginBottom: '10px' }}>
-                <span style={{ color: '#ffa502', fontWeight: 'bold' }}>LEVEL 1</span>
-                <span style={{ color: '#888', fontSize: '12px', marginLeft: '10px' }}>(4 spots - Your Direct Downline)</span>
-                <span style={{ color: '#00ff88', fontSize: '12px', marginLeft: '10px' }}>💰 25% commission</span>
+                <span style={{ color: '#ffa502', fontWeight: 'bold', fontSize: '12px' }}>LEVEL 1</span>
+                <span style={{ color: '#888', fontSize: '10px', marginLeft: '10px' }}>(4 spots)</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
                 {renderLevel1Spots()}
               </div>
             </div>
             
-            {/* Level 2 Summary */}
-            <div style={{ marginBottom: '20px' }}>
-              <div style={{ textAlign: 'center', marginBottom: '10px' }}>
-                <span style={{ color: '#ffa502', fontWeight: 'bold' }}>LEVEL 2</span>
-                <span style={{ color: '#888', fontSize: '12px', marginLeft: '10px' }}>(16 spots)</span>
-                <span style={{ color: '#00ff88', fontSize: '12px', marginLeft: '10px' }}>💰 25% commission</span>
+            <div style={{ marginBottom: '15px' }}>
+              <div style={{ textAlign: 'center', marginBottom: '5px' }}>
+                <span style={{ color: '#ffa502', fontWeight: 'bold', fontSize: '12px' }}>LEVEL 2-4</span>
               </div>
-              <div style={{ background: '#0a0a2a', height: '20px', borderRadius: '10px', overflow: 'hidden' }}>
-                <div style={{ width: `${(level2Count / 16) * 100}%`, height: '100%', background: 'linear-gradient(90deg, #00ccff, #00ff88)', borderRadius: '10px' }}></div>
+              <div style={{ background: '#0a0a2a', height: '15px', borderRadius: '10px', overflow: 'hidden' }}>
+                <div style={{ width: `${((matrix.level2.length + matrix.level3.length + matrix.level4.length) / 336) * 100}%`, height: '100%', background: 'linear-gradient(90deg, #00ccff, #00ff88)' }}></div>
               </div>
-              <p style={{ textAlign: 'center', fontSize: '12px', color: '#aaa', marginTop: '8px' }}>{level2Count} / 16 spots filled</p>
-            </div>
-            
-            {/* Level 3 Summary */}
-            <div style={{ marginBottom: '20px' }}>
-              <div style={{ textAlign: 'center', marginBottom: '10px' }}>
-                <span style={{ color: '#ffa502', fontWeight: 'bold' }}>LEVEL 3</span>
-                <span style={{ color: '#888', fontSize: '12px', marginLeft: '10px' }}>(64 spots)</span>
-                <span style={{ color: '#00ff88', fontSize: '12px', marginLeft: '10px' }}>💰 25% commission</span>
-              </div>
-              <div style={{ background: '#0a0a2a', height: '20px', borderRadius: '10px', overflow: 'hidden' }}>
-                <div style={{ width: `${(level3Count / 64) * 100}%`, height: '100%', background: 'linear-gradient(90deg, #00ccff, #00ff88)', borderRadius: '10px' }}></div>
-              </div>
-              <p style={{ textAlign: 'center', fontSize: '12px', color: '#aaa', marginTop: '8px' }}>{level3Count} / 64 spots filled</p>
-            </div>
-            
-            {/* Level 4 Summary */}
-            <div style={{ marginBottom: '10px' }}>
-              <div style={{ textAlign: 'center', marginBottom: '10px' }}>
-                <span style={{ color: '#ffa502', fontWeight: 'bold' }}>LEVEL 4</span>
-                <span style={{ color: '#888', fontSize: '12px', marginLeft: '10px' }}>(256 spots - Placement only)</span>
-                <span style={{ color: '#ff6666', fontSize: '12px', marginLeft: '10px' }}>📌 No commissions</span>
-              </div>
-              <div style={{ background: '#0a0a2a', height: '20px', borderRadius: '10px', overflow: 'hidden' }}>
-                <div style={{ width: `${(level4Count / 256) * 100}%`, height: '100%', background: 'linear-gradient(90deg, #00ccff, #00ff88)', borderRadius: '10px' }}></div>
-              </div>
-              <p style={{ textAlign: 'center', fontSize: '12px', color: '#aaa', marginTop: '8px' }}>{level4Count} / 256 spots filled</p>
+              <p style={{ textAlign: 'center', fontSize: '11px', color: '#aaa', marginTop: '5px' }}>
+                L2: {matrix.level2.length}/16 | L3: {matrix.level3.length}/64 | L4: {matrix.level4.length}/256
+              </p>
             </div>
           </div>
         )}
@@ -552,12 +521,7 @@ function UserDashboard({ session }) {
       <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #0a0a2a 0%, #1a1a3a 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ textAlign: 'center' }}>
           <div style={{ display: 'inline-block', width: '40px', height: '40px', border: '4px solid #00ff88', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-          <p style={{ color: 'white', marginTop: '15px' }}>Loading your dashboard...</p>
-          <style>{`
-            @keyframes spin {
-              to { transform: rotate(360deg); }
-            }
-          `}</style>
+          <p style={{ color: 'white', marginTop: '15px' }}>Loading...</p>
         </div>
       </div>
     )
@@ -580,21 +544,21 @@ function UserDashboard({ session }) {
       <div style={{ maxWidth: '1200px', margin: '30px auto', padding: '0 20px' }}>
         {/* Stats Cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '30px' }}>
-          <div style={{ background: '#1a1a3a', padding: '20px', borderRadius: '10px', textAlign: 'center', border: '1px solid #00ff88' }}>
-            <h3 style={{ color: '#aaa', marginBottom: '10px' }}>Your Points</h3>
-            <h2 style={{ color: '#00ff88', fontSize: '32px', margin: 0 }}>{stats.master_points.toLocaleString()}</h2>
+          <div style={{ background: '#1a1a3a', padding: '20px', borderRadius: '10px', textAlign: 'center' }}>
+            <h3 style={{ color: '#aaa' }}>Your Points</h3>
+            <h2 style={{ color: '#00ff88' }}>{stats.master_points.toLocaleString()}</h2>
           </div>
-          <div style={{ background: '#1a1a3a', padding: '20px', borderRadius: '10px', textAlign: 'center', border: '1px solid #00ff88' }}>
-            <h3 style={{ color: '#aaa', marginBottom: '10px' }}>Commission Earned</h3>
-            <h2 style={{ color: '#00ff88', fontSize: '32px', margin: 0 }}>{stats.commission_earned.toLocaleString()}</h2>
+          <div style={{ background: '#1a1a3a', padding: '20px', borderRadius: '10px', textAlign: 'center' }}>
+            <h3 style={{ color: '#aaa' }}>Commission Earned</h3>
+            <h2 style={{ color: '#00ff88' }}>{stats.commission_earned.toLocaleString()}</h2>
           </div>
-          <div style={{ background: '#1a1a3a', padding: '20px', borderRadius: '10px', textAlign: 'center', border: '1px solid #00ff88' }}>
-            <h3 style={{ color: '#aaa', marginBottom: '10px' }}>Your Level</h3>
-            <h2 style={{ color: '#00ff88', fontSize: '32px', margin: 0 }}>{stats.global_level}</h2>
+          <div style={{ background: '#1a1a3a', padding: '20px', borderRadius: '10px', textAlign: 'center' }}>
+            <h3 style={{ color: '#aaa' }}>Spots Filled</h3>
+            <h2 style={{ color: '#00ff88' }}>{stats.spots_filled} / {stats.total_spots}</h2>
           </div>
-          <div style={{ background: '#1a1a3a', padding: '20px', borderRadius: '10px', textAlign: 'center', border: '1px solid #00ff88' }}>
-            <h3 style={{ color: '#aaa', marginBottom: '10px' }}>Matrix #</h3>
-            <h2 style={{ color: '#00ff88', fontSize: '32px', margin: 0 }}>{stats.matrix_number}</h2>
+          <div style={{ background: '#1a1a3a', padding: '20px', borderRadius: '10px', textAlign: 'center' }}>
+            <h3 style={{ color: '#aaa' }}>Recovery Fund</h3>
+            <h2 style={{ color: '#00ff88' }}>{stats.recovery_fund.toLocaleString()}</h2>
           </div>
         </div>
 
@@ -602,15 +566,14 @@ function UserDashboard({ session }) {
         <div style={{ background: '#1a1a3a', padding: '20px', borderRadius: '10px', marginBottom: '30px' }}>
           <h2 style={{ color: '#00ccff', marginBottom: '20px' }}>📁 MY MATRICES</h2>
           {userMatrices.length === 0 ? (
-            <p style={{ textAlign: 'center', color: '#aaa', padding: '20px' }}>No matrices found</p>
+            <p style={{ textAlign: 'center', color: '#aaa', padding: '20px' }}>No matrices found.</p>
           ) : (
             userMatrices.map(matrix => renderMatrixVisualization(matrix))
           )}
         </div>
 
-        {/* Two Column Layout for Actions */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-          {/* Left Column - Actions */}
+        {/* Actions Section */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '30px' }}>
           <div style={{ background: '#1a1a3a', padding: '20px', borderRadius: '10px' }}>
             <h2 style={{ color: '#00ccff', marginBottom: '20px' }}>⚡ Your Actions</h2>
             
@@ -694,46 +657,33 @@ function UserDashboard({ session }) {
             </button>
           </div>
 
-          {/* Right Column - Stats Summary */}
           <div style={{ background: '#1a1a3a', padding: '20px', borderRadius: '10px' }}>
-            <h2 style={{ color: '#00ccff', marginBottom: '20px' }}>📊 Matrix Stats</h2>
+            <h2 style={{ color: '#00ccff', marginBottom: '20px' }}>📊 System Stats</h2>
             <div style={{ textAlign: 'center', padding: '20px' }}>
               <div style={{ marginBottom: '15px' }}>
-                <p style={{ color: '#aaa' }}>Total Spots Filled</p>
-                <p style={{ color: '#00ff88', fontSize: '28px', fontWeight: 'bold' }}>{stats.spots_filled} / {stats.total_spots}</p>
-                <div style={{ background: '#0a0a2a', height: '10px', borderRadius: '5px', overflow: 'hidden', marginTop: '10px' }}>
+                <p style={{ color: '#aaa' }}>Matrix Fill Progress</p>
+                <div style={{ background: '#0a0a2a', height: '20px', borderRadius: '10px', overflow: 'hidden' }}>
                   <div style={{ width: `${(stats.spots_filled / stats.total_spots) * 100}%`, height: '100%', background: 'linear-gradient(90deg, #00ccff, #00ff88)' }}></div>
                 </div>
-              </div>
-              <div style={{ marginBottom: '15px' }}>
-                <p style={{ color: '#aaa' }}>Recovery Fund</p>
-                <p style={{ color: '#ffa502', fontSize: '24px', fontWeight: 'bold' }}>{stats.recovery_fund.toLocaleString()} pts</p>
-              </div>
-              <div>
-                <p style={{ color: '#aaa' }}>People You've Referred</p>
-                <p style={{ color: '#00ff88', fontSize: '24px', fontWeight: 'bold' }}>{userMatrices[0]?.level1?.length || 0}</p>
+                <p style={{ color: '#00ff88', marginTop: '10px' }}>{stats.spots_filled} / {stats.total_spots} spots filled</p>
               </div>
             </div>
           </div>
         </div>
 
         {/* Transactions Section */}
-        <div style={{ background: '#1a1a3a', padding: '20px', borderRadius: '10px', marginTop: '30px' }}>
+        <div style={{ background: '#1a1a3a', padding: '20px', borderRadius: '10px' }}>
           <h2 style={{ color: '#00ccff', marginBottom: '20px' }}>📜 Recent Transactions</h2>
           {transactions.length === 0 ? (
             <p style={{ textAlign: 'center', color: '#aaa', padding: '20px' }}>No transactions yet</p>
           ) : (
-            <div>
-              {transactions.slice(0, 10).map((tx, idx) => (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px', borderBottom: '1px solid #333' }}>
-                  <div style={{ color: '#aaa' }}>{new Date(tx.timestamp).toLocaleDateString()}</div>
-                  <div style={{ color: '#aaa' }}>{tx.type.replace(/_/g, ' ').toUpperCase()}</div>
-                  <div style={{ color: tx.amount > 0 ? '#00ff88' : '#ff6666' }}>
-                    {tx.amount > 0 ? '+' : ''}{tx.amount.toLocaleString()}
-                  </div>
-                </div>
-              ))}
-            </div>
+            transactions.slice(0, 10).map((tx, idx) => (
+              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px', borderBottom: '1px solid #333' }}>
+                <div style={{ color: '#aaa' }}>{new Date(tx.timestamp).toLocaleDateString()}</div>
+                <div style={{ color: '#aaa' }}>{tx.type.replace(/_/g, ' ').toUpperCase()}</div>
+                <div style={{ color: tx.amount > 0 ? '#00ff88' : '#ff6666' }}>{tx.amount > 0 ? '+' : ''}{tx.amount.toLocaleString()}</div>
+              </div>
+            ))
           )}
         </div>
 
@@ -748,11 +698,9 @@ function UserDashboard({ session }) {
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.8)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ background: '#1a1a3a', padding: '30px', borderRadius: '10px', maxWidth: '450px', width: '90%', border: '2px solid #00aaff' }}>
             <h2 style={{ color: '#00aaff', marginBottom: '20px' }}>💰 Buy Points</h2>
-            
             <div style={{ marginBottom: '20px' }}>
               <p style={{ color: 'white', marginBottom: '10px' }}>Your balance: <strong style={{ color: '#00ff88' }}>{userData?.master_points?.toLocaleString()} points</strong></p>
             </div>
-            
             <div style={{ marginBottom: '20px' }}>
               <label style={{ color: '#aaa', display: 'block', marginBottom: '5px' }}>Points to purchase</label>
               <input
@@ -763,7 +711,6 @@ function UserDashboard({ session }) {
                 style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #00aaff', background: '#0a0a2a', color: 'white' }}
               />
             </div>
-            
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
                 onClick={handleBuyPoints}
@@ -788,12 +735,10 @@ function UserDashboard({ session }) {
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.8)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ background: '#1a1a3a', padding: '30px', borderRadius: '10px', maxWidth: '450px', width: '90%', border: '2px solid #ffaa00' }}>
             <h2 style={{ color: '#ffaa00', marginBottom: '20px' }}>💸 Cash Out</h2>
-            
             <div style={{ marginBottom: '20px' }}>
               <p style={{ color: 'white', marginBottom: '10px' }}>Your balance: <strong style={{ color: '#00ff88' }}>{userData?.master_points?.toLocaleString()} points</strong></p>
               <p style={{ color: '#ffaa00', fontSize: '12px' }}>Minimum: 10,000 points</p>
             </div>
-            
             <div style={{ marginBottom: '20px' }}>
               <label style={{ color: '#aaa', display: 'block', marginBottom: '5px' }}>Points to cash out</label>
               <input
@@ -804,12 +749,10 @@ function UserDashboard({ session }) {
                 style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ffaa00', background: '#0a0a2a', color: 'white' }}
               />
             </div>
-            
             <div style={{ marginBottom: '20px', background: '#0a0a2a', padding: '10px', borderRadius: '5px' }}>
               <p style={{ color: '#aaa', marginBottom: '5px' }}>Estimated value:</p>
               <p style={{ color: '#00ff88' }}>${((parseInt(cashoutAmount) || 0) * 0.005).toFixed(2)} USD</p>
             </div>
-            
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
                 onClick={handleCashout}
