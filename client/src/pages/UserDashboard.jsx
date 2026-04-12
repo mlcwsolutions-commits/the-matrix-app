@@ -675,6 +675,16 @@ function UserDashboard({ session }) {
             >
               🔄 Refresh Dashboard
             </button>
+
+            <button 
+  onClick={() => {
+    console.log('Manual refresh clicked')
+    loadUserMatrices()
+  }}
+  style={{ width: '100%', padding: '12px', background: '#ffa502', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '10px', color: '#0a0a2a' }}
+>
+  🔄 Refresh Matrices
+</button>
           </div>
 
           <div style={{ background: '#1a1a3a', padding: '20px', borderRadius: '10px' }}>
