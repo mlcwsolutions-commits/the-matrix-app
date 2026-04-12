@@ -47,10 +47,14 @@ function UserDashboard({ session }) {
 
   useEffect(() => {
   console.log('=== USER DASHBOARD MOUNTED ===')
-  loadUserData().then(() => {
-    loadUserMatrices()
-  })
+  loadUserData()
 }, [])
+
+useEffect(() => {
+  if (userData) {
+    loadUserMatrices()
+  }
+}, [userData])
 
   const loadUserData = async () => {
     try {
@@ -102,38 +106,22 @@ function UserDashboard({ session }) {
   try {
     console.log('=== LOADING USER MATRICES ===')
     
-    // First, get the current user's name from the session
-    const { data: { session: currentSession } } = await supabase.auth.getSession()
-    if (!currentSession) {
-      console.log('No session found')
+    // Use the userData state which is already loaded
+    if (!userData) {
+      console.log('User data not loaded yet, waiting...')
+      setTimeout(() => loadUserMatrices(), 1000)
       return
     }
 
-    console.log('Session user email:', currentSession.user.email)
+    console.log('User name from userData:', userData.name)
 
-    // Get the user's name from the users table
-    const { data: userRecord, error: userError } = await supabase
-      .from('users')
-      .select('id, name')
-      .eq('email', currentSession.user.email)
-      .single()
-
-    if (userError) {
-      console.error('Error finding user:', userError)
-      return
-    }
-
-    console.log('Found user record:', userRecord)
-
-    // Query matrix_spots by user_name (which is stored as text)
+    // Query matrix_spots by user_name
     const { data: userSpots, error: spotsError } = await supabase
       .from('matrix_spots')
       .select('*')
-      .eq('user_name', userRecord.name)
+      .eq('user_name', userData.name)
 
-    console.log('Query by user_name:', userRecord.name)
     console.log('Spots found:', userSpots?.length)
-    console.log('Spots error:', spotsError)
 
     if (spotsError) {
       console.error('Error fetching spots:', spotsError)
@@ -141,34 +129,28 @@ function UserDashboard({ session }) {
     }
 
     if (!userSpots || userSpots.length === 0) {
-      console.log('No spots found for user_name:', userRecord.name)
+      console.log('No spots found for user_name:', userData.name)
       setUserMatrices([])
       return
     }
 
-    console.log(`Found ${userSpots.length} spots for user`)
-
     // Build matrices array
-    const matrices = userSpots.map(spot => {
-      console.log(`Processing spot: Level ${spot.level}, Position ${spot.position}`)
-      return {
-        spotId: spot.id,
-        level: spot.level,
-        position: spot.position,
-        matrixId: spot.matrix_id,
-        isOriginal: spot.level === 0 && spot.position === 1,
-        level1: [],
-        level2: [],
-        level3: [],
-        level4: [],
-        filledCount: 1
-      }
-    })
+    const matrices = userSpots.map(spot => ({
+      spotId: spot.id,
+      level: spot.level,
+      position: spot.position,
+      matrixId: spot.matrix_id,
+      isOriginal: spot.level === 0 && spot.position === 1,
+      level1: [],
+      level2: [],
+      level3: [],
+      level4: [],
+      filledCount: 1
+    }))
 
     console.log('Matrices to display:', matrices.length)
     setUserMatrices(matrices)
 
-    // Auto-expand original matrix
     const originalMatrix = matrices.find(m => m.isOriginal)
     if (originalMatrix) {
       setExpandedMatrices(new Set([originalMatrix.spotId]))
