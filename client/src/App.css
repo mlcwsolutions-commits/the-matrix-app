@@ -1,3 +1,75 @@
+/* Responsive tile grid - keeps all existing styles */
+@media (max-width: 750px) {
+  .tile-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (min-width: 751px) and (max-width: 1000px) {
+  .tile-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* Landing Page Tile Grid */
+.tile-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 25px;
+  margin-bottom: 40px;
+}
+
+/* Tablet - 2 columns */
+@media (max-width: 900px) {
+  .tile-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Mobile - 1 column */
+@media (max-width: 600px) {
+  .tile-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+}
+
+/* Tile Base Styles */
+.portal-tile {
+  padding: 30px;
+  border-radius: 20px;
+  text-align: center;
+  transition: all 0.3s ease;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* Mobile adjustments */
+@media (max-width: 600px) {
+  .portal-tile {
+    padding: 25px 20px;
+    min-height: 180px;
+  }
+  
+  .portal-tile h2 {
+    font-size: 20px;
+  }
+  
+  .portal-tile p {
+    font-size: 13px;
+  }
+}
+
+/* Countdown specific mobile styles */
+@media (max-width: 600px) {
+  .countdown-numbers {
+    font-size: 18px !important;
+    gap: 5px !important;
+  }
+}
+
 .counter {
   font-size: 16px;
   padding: 5px 10px;
@@ -180,5 +252,18 @@
   &::after {
     right: 0;
     border-right-color: var(--border);
+  }
+}
+
+/* Landing Page Responsive Grid */
+@media (max-width: 750px) {
+  .tile-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (min-width: 751px) and (max-width: 1000px) {
+  .tile-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
   }
 }
