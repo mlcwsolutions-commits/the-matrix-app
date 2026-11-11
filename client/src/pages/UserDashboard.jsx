@@ -374,6 +374,7 @@ function UserDashboard() {
   const [isActiveMember, setIsActiveMember] = useState(false)
   const [showMobileMenu, setShowMobileMenu] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+  const [prizeClaimChecked, setPrizeClaimChecked] = useState(false)
 
   const GET_USER_DATA_URL = `${SUPABASE_URL}/functions/v1/get-user-data`
   const BUY_SPONSORED_URL = `${SUPABASE_URL}/functions/v1/buy-self-sponsored`
@@ -617,7 +618,7 @@ function UserDashboard() {
           recovery_fund: result.recoveryFund || 0
         })
         setTransactions(result.transactions || [])
-        setIsActiveMember((result.user.master_points || 0) >= 12500)
+        setIsActiveMember((result.user.master_points || 0) >= 1250)
       }
     } catch (error) {
       console.error('Error loading user data:', error)
@@ -715,23 +716,26 @@ function UserDashboard() {
             displayText: s.user_id === userData.id ? 'SELF' : (s.reserved_until || s.pending_signup_id ? 'RES\'D' : (s.user_name || 'Empty'))
           }))
 
-          const filledCount = 1 + level1.length + level2.length + level3.length
-          const isOriginal = spot.id === userSpotsSorted[0]?.id
-          const isAutoEntry = spot.is_auto_entry || false
+          // Count ONLY filled spots (filled_at is not null)
+const allSpotsInMatrix = [spot, ...level1, ...level2, ...level3]
+const filledSpotsCount = allSpotsInMatrix.filter(s => s.filled_at !== null).length
 
-          return {
-            spotId: spot.id,
-            level: spot.level,
-            position: spot.position,
-            matrixId: spot.matrix_id,
-            isOriginal,
-            isSelfSponsored: !isOriginal && !isAutoEntry,
-            isAutoEntry,
-            level1: enrichedLevel1,
-            level2: enrichedLevel2,
-            level3: enrichedLevel3,
-            filledCount
-          }
+const isOriginal = spot.id === userSpotsSorted[0]?.id
+const isAutoEntry = spot.is_auto_entry || false
+
+return {
+  spotId: spot.id,
+  level: spot.level,
+  position: spot.position,
+  matrixId: spot.matrix_id,
+  isOriginal,
+  isSelfSponsored: !isOriginal && !isAutoEntry,
+  isAutoEntry,
+  level1: enrichedLevel1,
+  level2: enrichedLevel2,
+  level3: enrichedLevel3,
+  filledCount: filledSpotsCount  // ← Now counts only filled spots
+}
         })
       )
 
@@ -847,8 +851,35 @@ function UserDashboard() {
       loadNotificationsData()
       loadQuickStartStatus()
       expireOldPromotions()
+
+      if (!prizeClaimChecked) {
+        setPrizeClaimChecked(true)
+        ;(async () => {
+          try {
+            const { data: { session } } = await supabase.auth.getSession()
+            if (!session?.access_token) return
+
+            const res = await fetch(`${SUPABASE_URL}/functions/v1/claim-pending-prizes`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`
+              },
+              body: JSON.stringify({})
+            })
+            const data = await res.json()
+
+            if (data.success && data.claimed > 0) {
+              alert(`🎉 ${data.message}`)
+              loadUserData()
+            }
+          } catch (err) {
+            console.warn('Auto-claim prizes check failed:', err)
+          }
+        })()
+      }
     }
-  }, [userData?.id, userData?.account_status, loadUserMatrices, loadNotificationsData, loadQuickStartStatus, expireOldPromotions])
+  }, [userData?.id, userData?.account_status, prizeClaimChecked, loadUserMatrices, loadNotificationsData, loadQuickStartStatus, expireOldPromotions])
 
   useEffect(() => {
     let interval = null
@@ -920,7 +951,7 @@ function UserDashboard() {
   }, [pendingStatus?.hasPending, pendingStatus?.status, countdown.seconds])
 
   useEffect(() => {
-    setIsActiveMember((stats.master_points || 0) >= 12500)
+    setIsActiveMember((stats.master_points || 0) >= 1250)
   }, [stats.master_points])
 
   useEffect(() => {
@@ -995,7 +1026,7 @@ function UserDashboard() {
 
   const buySelfSponsored = async () => {
     if (buying) return
-    if (!confirm(`⚠️ Buy self-sponsored spot for 50,000 points?\n\nYour balance: ${formatNumber(stats.master_points)} points`)) return
+    if (!confirm(`⚠️ Buy self-sponsored spot for 5,000 points?\n\nYour balance: ${formatNumber(stats.master_points)} points`)) return
 
     try {
       setBuying(true)
@@ -1004,8 +1035,8 @@ function UserDashboard() {
         alert('Please login again')
         return
       }
-      if ((stats.master_points || 0) < 50000) {
-        alert('Insufficient points. You need 50,000 points.')
+      if ((stats.master_points || 0) < 5000) {
+        alert('Insufficient points. You need 5,000 points.')
         return
       }
 
@@ -1117,71 +1148,60 @@ function UserDashboard() {
 }
 
   const handleSubmitCashout = async () => {
-    const requestedPoints = parseInt(cashoutAmount)
-    const feePoints = Math.floor(requestedPoints * 0.01)
-    const netPoints = requestedPoints - feePoints
-    const netUsd = netPoints / 200
+  const requestedPoints = parseInt(cashoutAmount)
 
-    if (!cashoutAmount || requestedPoints < 20000) {
-      alert('Minimum cashout is 20,000 points')
-      return
-    }
-    if (!walletAddress) {
-      alert('Please enter your wallet address')
-      return
-    }
-    if (requestedPoints > (stats.master_points || 0)) {
-      alert('Insufficient points')
-      return
-    }
-    if (!confirm(`⚠️ Cashout ${requestedPoints.toLocaleString()} points\n\nFee (1%): -${feePoints.toLocaleString()} points\nNet: ${netPoints.toLocaleString()} points ($${netUsd.toFixed(2)})\n\nContinue?`)) {
-      return
-    }
-
-    setCashoutLoading(true)
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      const { data: currentUser } = await supabase
-        .from('users')
-        .select('master_points, name')
-        .eq('id', session.user.id)
-        .single()
-      const user = currentUser
-      const usdAmount = (requestedPoints / 200).toFixed(2)
-
-      const { error: requestError } = await supabase
-        .from('cashout_requests')
-        .insert({
-          user_id: session.user.id,
-          user_name: user?.name,
-          points_amount: requestedPoints,
-          usd_amount: parseFloat(usdAmount),
-          wallet_address: walletAddress,
-          crypto_type: cashoutCryptoType,
-          status: 'pending'
-        })
-      if (requestError) throw requestError
-
-      await supabase.from('notifications').insert({
-        user_id: session.user.id,
-        type: 'cashout_requested',
-        title: '💸 Cashout Request Submitted',
-        message: `Your cashout request for ${requestedPoints.toLocaleString()} points has been submitted and is pending review.`,
-        created_at: new Date().toISOString()
-      })
-
-      alert(`✅ Cashout request for ${requestedPoints.toLocaleString()} points submitted! You will be notified when approved.`)
-      setShowCashoutModal(false)
-      setCashoutAmount('')
-      setWalletAddress('')
-      refreshAllData()
-    } catch (error) {
-      console.error(error)
-      alert('Error processing cashout: ' + error.message)
-    } finally {
-      setCashoutLoading(false)
-    }
+  if (!cashoutAmount || requestedPoints < 2000) {
+    alert('Minimum cashout is 2,000 points')
+    return
   }
+  if (!walletAddress) {
+    alert('Please enter your wallet address')
+    return
+  }
+  if (requestedPoints > (stats.master_points || 0)) {
+    alert('Insufficient points')
+    return
+  }
+
+  setCashoutLoading(true)
+
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/request-cashout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`
+      },
+      body: JSON.stringify({
+        points_amount: requestedPoints,
+        wallet_address: walletAddress,
+        crypto_type: cashoutCryptoType
+      })
+    })
+
+    const result = await response.json()
+
+    if (!result.success) {
+      alert('❌ ' + result.error)
+      setCashoutLoading(false)
+      return
+    }
+
+    alert(`✅ ${result.message}`)
+    setShowCashoutModal(false)
+    setCashoutAmount('')
+    setWalletAddress('')
+    refreshAllData()
+
+  } catch (error) {
+    console.error(error)
+    alert('Error processing cashout: ' + error.message)
+  } finally {
+    setCashoutLoading(false)
+  }
+}
 
   const searchUsers = async () => {
     if (!searchQuery.trim() || searchQuery.length < 2) {
@@ -1779,7 +1799,7 @@ function UserDashboard() {
           borderBottom: '1px solid #00ff88'
         }}>
           <h1 style={styles.logo} onClick={() => navigate('/')}>
-            🔷 THE MATRIX
+            🔷 SIGMA-PLUS
           </h1>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
@@ -1879,7 +1899,7 @@ function UserDashboard() {
         <div style={styles.header}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
             <h1 style={styles.logo} onClick={() => navigate('/')}>
-              🔷 THE MATRIX
+              🔷 SIGMA-PLUS
             </h1>
             {isActiveMember && (
               <span style={styles.activeMemberBadge}>
@@ -1910,7 +1930,7 @@ function UserDashboard() {
               <span style={{ fontSize: '24px' }}>🚀</span>
               <span style={{ color: '#ffa502', fontWeight: 'bold', fontSize: '16px', marginLeft: '8px' }}> Quick Start Bonus Available!</span>
               <p style={{ color: '#aaa', fontSize: '12px', marginTop: '5px', marginBottom: 0 }}>
-                Complete your Level 1 within 7 days to claim 50,000 points
+                Complete your Level 1 within 7 days to claim 5,000 points
               </p>
               {quickStartStatus.daysRemaining > 0 && (
                 <p style={{ color: '#ffa502', fontSize: '11px', marginTop: '3px', marginBottom: 0 }}>
@@ -2199,7 +2219,7 @@ function UserDashboard() {
                   style={styles.modalInput} 
                 />
                 <p style={{ color: '#888', fontSize: '11px', marginBottom: '15px' }}>
-                  Each code is worth 50,000 points
+                  Each code is worth 5,000 points
                 </p>
                 <button onClick={handleRedeemCode} disabled={loadLoading || !activationCode} style={{ ...styles.buttonSuccess, width: '100%', marginBottom: '10px', opacity: (!activationCode || loadLoading) ? 0.6 : 1 }}>
                   {loadLoading ? 'Processing...' : 'Redeem Code'}
@@ -2218,11 +2238,11 @@ function UserDashboard() {
         <div style={styles.modalOverlay}>
           <div style={{ ...styles.modalContent, borderColor: '#ffaa00' }}>
             <h2 style={{ color: '#ffaa00', marginBottom: '16px' }}>💸 Cash Out</h2>
-            <p style={{ color: '#00ff88' }}>Balance: <strong>{formatNumber(stats.master_points)} points</strong> | Min: 20,000 | Fee: 1%</p>
-            <input type="number" placeholder="Points" value={cashoutAmount} onChange={e => setCashoutAmount(e.target.value)} min="20000" style={styles.modalInput} />
+            <p style={{ color: '#00ff88' }}>Balance: <strong>{formatNumber(stats.master_points)} points</strong> | Min: 2,000 | Fee: 1%</p>
+            <input type="number" placeholder="Points" value={cashoutAmount} onChange={e => setCashoutAmount(e.target.value)} min="2000" style={styles.modalInput} />
             <select value={cashoutCryptoType} onChange={e => setCashoutCryptoType(e.target.value)} style={styles.modalSelect}><option>USDT</option><option>USDC</option></select>
             <input type="text" placeholder="Wallet Address" value={walletAddress} onChange={e => setWalletAddress(e.target.value)} style={styles.modalInput} />
-            {cashoutAmount && parseInt(cashoutAmount) >= 20000 && (
+            {cashoutAmount && parseInt(cashoutAmount) >= 2000 && (
               <div style={{ background: '#0d0d12', padding: '15px', borderRadius: '12px', marginBottom: '15px' }}>
                 <div style={{ color: '#fff' }}>Requested: {formatNumber(parseInt(cashoutAmount))}</div>
                 <div style={{ color: '#ff6666' }}>Fee (1%): -{formatNumber(Math.floor(parseInt(cashoutAmount)*0.01))}</div>
@@ -2230,27 +2250,92 @@ function UserDashboard() {
               </div>
             )}
             <div style={{ display: 'flex', gap: '10px' }}>
-              <button onClick={handleSubmitCashout} disabled={cashoutLoading || !walletAddress || parseInt(cashoutAmount)<20000} style={{ ...styles.buttonWarning, flex: 1, opacity: (cashoutLoading || !walletAddress || parseInt(cashoutAmount)<20000) ? 0.6 : 1 }}>{cashoutLoading ? 'Processing...' : 'Request Cashout'}</button>
+              <button onClick={handleSubmitCashout} disabled={cashoutLoading || !walletAddress || parseInt(cashoutAmount)<2000} style={{ ...styles.buttonWarning, flex: 1, opacity: (cashoutLoading || !walletAddress || parseInt(cashoutAmount)<2000) ? 0.6 : 1 }}>{cashoutLoading ? 'Processing...' : 'Request Cashout'}</button>
               <button onClick={() => { setShowCashoutModal(false); setCashoutAmount(''); setWalletAddress('') }} style={{ ...styles.buttonSecondary, flex: 1 }}>Cancel</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Transfer Modal */}
+            {/* Transfer Modal */}
       {showTransferModal && (
         <div style={styles.modalOverlay}>
           <div style={{ ...styles.modalContent, borderColor: '#9b59b6' }}>
             <h2 style={{ color: '#9b59b6', marginBottom: '16px' }}>💸 Transfer Points</h2>
-            <input type="text" placeholder="Search by email or referral code" value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); if(e.target.value.length>=2) setTimeout(searchUsers,300); else setSearchResults([]) }} style={styles.modalInput} />
-            {searchResults.map(u => <div key={u.id} onClick={() => selectRecipient(u)} style={{ padding: '10px', background: '#0d0d12', cursor: 'pointer', borderBottom: '1px solid #252530', color: '#fff' }}><div style={{ fontWeight: 'bold' }}>{u.referral_code}</div><div style={{ fontSize: '12px', color: '#888' }}>{u.email}</div></div>)}
-            {selectedRecipient && <div style={{ margin: '10px 0', padding: '10px', background: '#0d0d12', borderRadius: '12px', color: '#fff' }}>Recipient: <strong style={{ color: '#00ff88' }}>{selectedRecipient.referral_code}</strong></div>}
-            <input type="number" placeholder="Amount" value={transferAmount} onChange={e => setTransferAmount(e.target.value)} style={styles.modalInput} />
-            <input type="text" placeholder="Description (optional)" value={transferDescription} onChange={e => setTransferDescription(e.target.value)} style={styles.modalInput} />
-            <p style={{ color: '#00ff88', fontSize: '12px', marginBottom: '16px' }}>Your balance: {formatNumber(stats.master_points)} points</p>
+            <input 
+              type="text" 
+              placeholder="Search by email or referral code" 
+              value={searchQuery} 
+              onChange={(e) => { 
+                const value = e.target.value;
+                setSearchQuery(value); 
+                if(value.length >= 2) {
+                  setTimeout(() => searchUsers(), 300);
+                } else { 
+                  setSearchResults([]) 
+                } 
+              }} 
+              style={styles.modalInput} 
+            />
+            {searchLoading && <p style={{ color: '#aaa', fontSize: '12px', padding: '8px' }}>Searching...</p>}
+            {!searchLoading && searchResults.length === 0 && searchQuery.length >= 2 && (
+              <p style={{ color: '#ffa502', fontSize: '12px', padding: '8px' }}>No users found</p>
+            )}
+            {searchResults.map(u => (
+              <div 
+                key={u.id} 
+                onClick={() => selectRecipient(u)} 
+                style={{ padding: '10px', background: '#0d0d12', cursor: 'pointer', borderBottom: '1px solid #252530', color: '#fff' }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#1a1a3a'}
+                onMouseLeave={(e) => e.currentTarget.style.background = '#0d0d12'}
+              >
+                <div style={{ fontWeight: 'bold' }}>{u.referral_code}</div>
+                <div style={{ fontSize: '12px', color: '#888' }}>{u.email}</div>
+              </div>
+            ))}
+            {selectedRecipient && (
+              <div style={{ margin: '10px 0', padding: '10px', background: '#0d0d12', borderRadius: '12px', color: '#fff' }}>
+                Recipient: <strong style={{ color: '#00ff88' }}>{selectedRecipient.referral_code}</strong> ({selectedRecipient.name})
+              </div>
+            )}
+            <input 
+              type="number" 
+              placeholder="Amount" 
+              value={transferAmount} 
+              onChange={e => setTransferAmount(e.target.value)} 
+              style={styles.modalInput} 
+            />
+            <input 
+              type="text" 
+              placeholder="Description (optional)" 
+              value={transferDescription} 
+              onChange={e => setTransferDescription(e.target.value)} 
+              style={styles.modalInput} 
+            />
+            <p style={{ color: '#00ff88', fontSize: '12px', marginBottom: '16px' }}>
+              Your balance: {formatNumber(stats.master_points)} points
+            </p>
             <div style={{ display: 'flex', gap: '10px' }}>
-              <button onClick={openVerifyModal} disabled={!selectedRecipient || !transferAmount} style={{ ...styles.buttonPurple, flex: 1, opacity: (!selectedRecipient || !transferAmount) ? 0.6 : 1 }}>Continue</button>
-              <button onClick={() => setShowTransferModal(false)} style={{ ...styles.buttonSecondary, flex: 1 }}>Cancel</button>
+              <button 
+                onClick={openVerifyModal} 
+                disabled={!selectedRecipient || !transferAmount} 
+                style={{ ...styles.buttonPurple, flex: 1, opacity: (!selectedRecipient || !transferAmount) ? 0.6 : 1 }}
+              >
+                Continue
+              </button>
+              <button 
+                onClick={() => {
+                  setShowTransferModal(false);
+                  setSearchQuery('');
+                  setSearchResults([]);
+                  setSelectedRecipient(null);
+                  setTransferAmount('');
+                  setTransferDescription('');
+                }} 
+                style={{ ...styles.buttonSecondary, flex: 1 }}
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
@@ -2369,10 +2454,10 @@ function UserDashboard() {
             <p style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px' }}>We may update these Terms from time to time. Continued use of the platform constitutes acceptance of updated Terms.</p>
             
             <h2 style={{ color: '#00ccff', fontSize: '20px', marginBottom: '10px' }}>Contact</h2>
-            <p style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px' }}>For questions about these Terms, contact: legal@the-matrix.app</p>
+            <p style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px' }}>For questions about these Terms, contact: hello@the-matrix.app</p>
             
-            <h2 style={{ color: '#00ccff', fontSize: '20px', marginBottom: '10px' }}>Governing Law</h2>
-            <p style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px' }}>These Terms shall be governed by the laws of Barbados.</p>
+            <h2 style={{ color: '#00ccff', fontSize: '20px', marginBottom: '10px' }}>Governing Principles</h2>
+<p style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px' }}>These Terms shall be interpreted in accordance with the principles of equity, good conscience, and international comity, drawing inspiration from the universal values of fairness, transparency, and human dignity. The parties agree to resolve disputes through dialogue and good faith negotiation before seeking any formal remedy.</p>
             
             <p style={{ color: '#00ff88', fontSize: '14px', marginTop: '20px', paddingTop: '15px', borderTop: '1px solid #333' }}>BY USING THE MATRIX, YOU ACKNOWLEDGE THAT YOU HAVE READ, UNDERSTOOD, AND AGREE TO THESE TERMS.</p>
           </div>
