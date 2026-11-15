@@ -1361,12 +1361,13 @@ return {
 }
 
   const getTransactionDisplay = (tx) => {
-    if (tx.type === 'commission_level_1') return '💰 Commission (Direct Referral)'
-    if (tx.type === 'commission_level_2') return '💰 Commission (Level 2)'
-    if (tx.type === 'commission_level_3') return '💰 Commission (Level 3)'
-    if (tx.type === 'commission') return '💰 Commission'
-    return tx.type?.replace(/_/g, ' ').toUpperCase() || 'Transaction'
-  }
+  if (tx.type === 'commission_level_1') return '💰 Commission (Direct Referral)'
+  if (tx.type === 'commission_level_2') return '💰 Commission (Level 2)'
+  if (tx.type === 'commission_level_3') return '💰 Commission (Level 3)'
+  if (tx.type === 'commission') return '💰 Commission'
+  if (tx.type === 'bonus_paid') return '💰 Bonus Paid'
+  return tx.type?.replace(/_/g, ' ').toUpperCase() || 'Transaction'
+}
 
   const getMatrixTitle = (matrix) => {
     if (matrix.isAutoEntry) return '🔄 Auto-Entry Matrix'
@@ -2368,7 +2369,12 @@ return {
             <div style={{ background: '#0d0d12', padding: '15px', borderRadius: '12px', marginBottom: '15px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}><span style={{ color: '#888' }}>🏆 Prize:</span><span style={{ color: '#00ff88', fontWeight: 'bold' }}>{activePromotion.prize_description}</span></div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}><span style={{ color: '#888' }}>💰 Entry Cost:</span><span style={{ color: '#ffa502', fontWeight: 'bold' }}>{activePromotion.entry_cost.toLocaleString()} points</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}><span style={{ color: '#888' }}>📊 Total Entries:</span><span style={{ color: '#00ccff' }}>{activePromotion.total_entries || 0}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
+  <span style={{ color: '#888' }}>📊 Total Entries:</span>
+  <span style={{ color: '#00ccff' }}>
+    {(activePromotion.total_entries || 0) + (activePromotion.redeemed_tickets_count || 0)}
+  </span>
+</div>
             </div>
             <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
               <button onClick={enterPromotion} disabled={enteringPromotion} style={{ flex: 2, padding: '12px', background: enteringPromotion ? '#555' : '#ffa502', border: 'none', borderRadius: '100px', fontWeight: 'bold', cursor: enteringPromotion ? 'not-allowed' : 'pointer', color: '#0d0d12' }}>{enteringPromotion ? 'Processing...' : `Enter Raffle (${activePromotion.entry_cost.toLocaleString()} points)`}</button>

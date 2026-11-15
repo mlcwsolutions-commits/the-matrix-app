@@ -2925,7 +2925,13 @@ function AdminDashboard() {
                               <span style={{ color: '#888', fontSize: 11 }}>🏆 Prize: <span style={{ color: '#ffa502' }}>{promo.prize_description}</span></span>
                               {promo.prize_points > 0 && <span style={{ color: '#888', fontSize: 11 }}>💎 Points: <span style={{ color: '#00ff88' }}>{formatNumber(promo.prize_points)}</span></span>}
                               <span style={{ color: '#888', fontSize: 11 }}>💰 Entry: <span style={{ color: '#00ff88' }}>{formatNumber(promo.entry_cost)} points</span></span>
-                              <span style={{ color: '#888', fontSize: 11 }}>📊 Entries: <span style={{ color: '#00ccff' }}>{promo.total_entries || 0}</span></span>
+                              <span style={{ color: '#888', fontSize: 11 }}>📊 Member Entries: <span style={{ color: '#00ccff' }}>{promo.total_entries || 0}</span></span>
+{promo.redeemed_tickets_count > 0 && (
+  <span style={{ color: '#888', fontSize: 11 }}>🎟️ Redeemed Tickets: <span style={{ color: '#9b59b6' }}>{promo.redeemed_tickets_count}</span></span>
+)}
+{promo.redeemed_tickets_count > 0 && (
+  <span style={{ color: '#888', fontSize: 11 }}>🎲 Total Pool: <span style={{ color: '#ffa502', fontWeight: 'bold' }}>{(promo.total_entries || 0) + promo.redeemed_tickets_count}</span></span>
+)}
                               {promo.start_date && <span style={{ color: '#888', fontSize: 11 }}>📅 Starts: <span style={{ color: '#ffa502' }}>{UTCToLocal(promo.start_date)}</span></span>}
                               <span style={{ color: '#888', fontSize: 11 }}>⏰ Ends: <span style={{ color: '#ff6666' }}>{UTCToLocal(promo.end_date)}</span></span>
                               <span style={{ color: '#888', fontSize: 11 }}>🤖 Auto Draw: <span style={{ color: promo.auto_draw !== false ? '#00ff88' : '#ff6666' }}>{promo.auto_draw !== false ? 'ON' : 'OFF'}</span></span>
