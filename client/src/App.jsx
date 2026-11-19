@@ -1,5 +1,6 @@
 // client/src/App.jsx
-// THE MATRIX V5.0 - Main App Component
+// THE MATRIX V5.1 - Main App Component
+// UPDATED: Added /raffle/redeem public route for buyer-facing redemption
 
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
@@ -11,6 +12,7 @@ import UserDashboard from './pages/UserDashboard'
 import WaitlistDashboard from './pages/WaitlistDashboard'
 import AdminDashboard from './pages/AdminDashboard'
 import ManualCryptoPage from './pages/ManualCryptoPage'
+import RaffleRedeem from './pages/RaffleRedeem'
 
 function App() {
   const [session, setSession] = useState(null)
@@ -63,7 +65,10 @@ function App() {
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
-      
+
+      {/* Public Raffle Redemption — non-members land here via agent links */}
+      <Route path="/raffle/redeem" element={<RaffleRedeem />} />
+
       {/* Waitlist Dashboard - For waitlisted users only */}
       <Route 
         path="/waitlist" 

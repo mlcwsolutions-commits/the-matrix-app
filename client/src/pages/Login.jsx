@@ -199,12 +199,19 @@ function Login() {
 
 const { data: userData } = await supabase
   .from('users')
-  .select('account_status')
+  .select('account_status, disabled')
   .eq('id', data.user.id)
   .maybeSingle()
 
+if (userData?.disabled === true || userData?.account_status === 'frozen') {
+  await supabase.auth.signOut()
+  setError('Your account has been disabled. Please contact support.')
+  setLoading(false)
+  return
+}
+
 if (waitlistData?.waitlist_position && !waitlistData?.converted_at) {
-  window.location.href = '/waitlist'  // ← CHANGED FROM /waitlistdashboard
+  window.location.href = '/waitlist'
 } else if (userData?.account_status === 'active') {
   window.location.href = '/dashboard'
 } else {
@@ -231,7 +238,7 @@ if (waitlistData?.waitlist_position && !waitlistData?.converted_at) {
     <div style={styles.container}>
       <div style={styles.card}>
         <div style={styles.header}>
-          <h1 style={styles.logo}>🔷 THE MATRIX</h1>
+          <h1 style={styles.logo}>🔷 SIGMA-PLUS</h1>
         </div>
         
         <div style={styles.tabContainer}>

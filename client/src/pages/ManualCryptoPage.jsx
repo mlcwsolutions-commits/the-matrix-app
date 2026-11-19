@@ -40,12 +40,12 @@ function ManualCryptoPage() {
     } else {
       setWallets([{
         id: 1,
-        address: 'TGe4MXjBtZ366M2qQkNqu94LcrAGBjkoFf',
-        network: 'TRC20',
-        label: 'Main Wallet',
+        address: '0x1C77C24DD6c35231a2D3113eA645d90be4F926c2',
+        network: 'BSC',
+        label: 'Main RedotPay Wallet',
         display_order: 1
       }])
-      setSelectedWallet({ id: 1, address: 'TGe4MXjBtZ366M2qQkNqu94LcrAGBjkoFf' })
+      setSelectedWallet({ id: 1, address: '0x1C77C24DD6c35231a2D3113eA645d90be4F926c2' })
     }
   }
 
@@ -129,7 +129,7 @@ function ManualCryptoPage() {
     }
   }
 
-  const displayAmount = usdAmount || (type === 'registration' ? 250 : pointsAmount ? pointsAmount / 200 : 0)
+  const displayAmount = usdAmount || (type === 'registration' ? 25 : pointsAmount ? pointsAmount / 200 : 0)
 
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #0a0a2a 0%, #1a1a3a 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
@@ -140,7 +140,7 @@ function ManualCryptoPage() {
             <div style={{ textAlign: 'center', marginBottom: '30px' }}>
               <div style={{ fontSize: '48px', marginBottom: '10px' }}>💎</div>
               <h2 style={{ color: '#ffa502', marginBottom: '5px' }}>Manual Crypto Payment</h2>
-              <p style={{ color: '#aaa' }}>Send USDT (TRC20) to complete your transaction</p>
+              <p style={{ color: '#aaa' }}>Send USDT (BSC) to complete your transaction</p>
             </div>
 
             <div style={{ background: '#0a0a2a', padding: '15px', borderRadius: '10px', marginBottom: '20px', textAlign: 'center' }}>
@@ -212,7 +212,7 @@ function ManualCryptoPage() {
               <p style={{ color: '#ffa502', marginBottom: '10px', fontSize: '14px', fontWeight: 'bold' }}>📋 Instructions:</p>
               <ol style={{ color: '#aaa', fontSize: '12px', margin: 0, paddingLeft: '20px' }}>
                 <li style={{ marginBottom: '5px' }}>Copy one of the wallet addresses above</li>
-                <li style={{ marginBottom: '5px' }}>Send exactly <strong>${displayAmount.toFixed(2)} USDT</strong> to that address (TRC20 network)</li>
+                <li style={{ marginBottom: '5px' }}>Send exactly <strong>${displayAmount.toFixed(2)} USDT</strong> to that address (BSC network)</li>
                 <li style={{ marginBottom: '5px' }}>After sending, paste your transaction hash and sender address below</li>
                 <li>Click "Confirm Crypto Payment" to submit for admin approval</li>
               </ol>

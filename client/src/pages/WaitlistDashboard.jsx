@@ -182,7 +182,7 @@ function WaitlistDashboard() {
 
         <div style={{ textAlign: 'center', marginTop: '20px', padding: '20px', borderTop: '1px solid #333' }}>
           <p style={{ color: '#aaa', fontSize: '14px' }}>
-            ⏰ Launch Date: <strong style={{ color: '#00ff88' }}>June 1, 2026</strong>
+            ⏰ Launch Date: <strong style={{ color: '#00ff88' }}>July 15, 2026</strong>
           </p>
           <p style={{ color: '#666', fontSize: '12px' }}>
             You will be notified when your spot is ready.

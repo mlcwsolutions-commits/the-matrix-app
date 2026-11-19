@@ -321,7 +321,7 @@ function AdminDashboard() {
       .insert({
         address: 'Enter wallet address',
         label: `Wallet ${newOrder}`,
-        network: 'TRC20',
+        network: 'BSC',
         display_order: newOrder,
         is_active: false
       })
@@ -2799,12 +2799,12 @@ function AdminDashboard() {
               </div>
             </div>
             <div style={{ background: '#1a1a3a', padding: 20, borderRadius: 10, border: '1px solid #ffa502' }}>
-              <h3 style={{ color: '#ffa502', marginBottom: 15 }}>💰 Crypto Wallet Addresses (TRC20)</h3>
+              <h3 style={{ color: '#ffa502', marginBottom: 15 }}>💰 Crypto Wallet Addresses (BSC)</h3>
               <p style={{ color: '#aaa', fontSize: 12, marginBottom: 15 }}>Users will see these addresses when making manual crypto payments.</p>
               {cryptoWallets.map((wallet, index) => (
                 <div key={wallet.id} style={{ background: '#0a0a2a', padding: 15, borderRadius: 10, marginBottom: 10 }}>
                   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-                    <input type="text" value={wallet.address} onChange={(e) => updateWalletAddress(wallet.id, e.target.value)} style={{ flex: 2, padding: 8, background: '#0a0a2a', color: 'white', border: '1px solid #ffa502', borderRadius: 5 }} placeholder="Wallet Address (TRC20)" />
+                    <input type="text" value={wallet.address} onChange={(e) => updateWalletAddress(wallet.id, e.target.value)} style={{ flex: 2, padding: 8, background: '#0a0a2a', color: 'white', border: '1px solid #ffa502', borderRadius: 5 }} placeholder="Wallet Address (BSC)" />
                     <input type="text" value={wallet.label || ''} onChange={(e) => updateWalletLabel(wallet.id, e.target.value)} style={{ flex: 1, padding: 8, background: '#0a0a2a', color: 'white', border: '1px solid #ffa502', borderRadius: 5 }} placeholder="Label (e.g., Main Wallet)" />
                     <button onClick={() => toggleWalletActive(wallet.id, !wallet.is_active)} style={{ padding: '8px 16px', background: wallet.is_active ? '#00ff88' : '#555', border: 'none', borderRadius: 5, cursor: 'pointer', color: wallet.is_active ? '#0a0a2a' : 'white' }}>{wallet.is_active ? 'Active' : 'Inactive'}</button>
                     {index > 0 && <button onClick={() => deleteWallet(wallet.id)} style={{ padding: '8px 16px', background: '#ff4444', border: 'none', borderRadius: 5, cursor: 'pointer', color: 'white' }}>Delete</button>}
@@ -2952,7 +2952,18 @@ function AdminDashboard() {
                               <button onClick={() => { setGenerateTicketsRaffle(promo); setGenerateTicketsQuantity(50); setShowGenerateTicketsModal(true); }} style={{ padding: '6px 12px', background: '#9b59b6', border: 'none', borderRadius: 5, cursor: 'pointer', color: 'white', fontSize: 12, fontWeight: 'bold' }}>🎟️ Generate Tickets</button>
                             )}
                             {showDrawButton && <button onClick={() => drawWinner(promo.id)} style={{ padding: '6px 12px', background: '#9b59b6', border: 'none', borderRadius: 5, cursor: 'pointer', color: 'white', fontSize: 12 }}>Draw Winner</button>}
-                            <button onClick={() => { setEditingPromotion(promo); setNewPromotion({ ...promo, start_date: promo.start_date || '' }); setShowCreatePromotionModal(true) }} style={{ padding: '6px 12px', background: '#00ccff', border: 'none', borderRadius: 5, cursor: 'pointer', color: '#0a0a2a', fontSize: 12 }}>Edit</button>
+                            <button onClick={() => {
+  setEditingPromotion(promo)
+  // Strip out computed/virtual fields that aren't in the promotions table
+  const {
+    redeemed_tickets_count,
+    winner,
+    winner_type,
+    ...editableFields
+  } = promo
+  setNewPromotion({ ...editableFields, start_date: promo.start_date || '' })
+  setShowCreatePromotionModal(true)
+}} style={{ padding: '6px 12px', background: '#00ccff', border: 'none', borderRadius: 5, cursor: 'pointer', color: '#0a0a2a', fontSize: 12 }}>Edit</button>
                             <button onClick={() => deletePromotion(promo.id)} style={{ padding: '6px 12px', background: '#ff4444', border: 'none', borderRadius: 5, cursor: 'pointer', color: 'white', fontSize: 12 }}>Delete</button>
                           </div>
                         </div>

@@ -364,9 +364,11 @@ function UserDashboard() {
   const [showTermsModal, setShowTermsModal] = useState(false)
   const [showPrivacyModal, setShowPrivacyModal] = useState(false)
 
-  const [notifications, setNotifications] = useState([])
+    const [notifications, setNotifications] = useState([])
   const [showNotificationDropdown, setShowNotificationDropdown] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
+  // Item 21 — pinned active raffles in notification dropdown
+  const [pinnedRaffles, setPinnedRaffles] = useState([])
   
   const [bellAnimate, setBellAnimate] = useState(false)
   const prevUnreadCountRef = useRef(unreadCount)
@@ -386,7 +388,7 @@ function UserDashboard() {
 
   const formatNumber = (num) => num?.toLocaleString() || '0'
 
-  const loadNotificationsData = useCallback(async () => {
+    const loadNotificationsData = useCallback(async () => {
     if (!userData?.id) return
     
     const { data, error } = await supabase
@@ -410,6 +412,25 @@ function UserDashboard() {
       n.type !== 'promotion_reminder'
     ).length || 0
     setUnreadCount(unreadRegular)
+
+    // Item 21 — Load active raffles for pinned section
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        const raffleRes = await fetch(BONUS_ENGINE_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+          body: JSON.stringify({ action: 'getActivePromotions', data: { userId: userData.id } })
+        })
+        const raffleData = await raffleRes.json()
+        if (raffleData.success && raffleData.promotions) {
+          // Cap at 5, already sorted by end_date ASC from backend
+          setPinnedRaffles(raffleData.promotions.slice(0, 5))
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to load pinned raffles:', err)
+    }
   }, [userData?.id])
 
   const markAsRead = async (notificationId) => {
@@ -795,7 +816,7 @@ return {
     setWalletAddresses(addresses)
   }, [])
 
-  const expireOldPromotions = useCallback(async () => {
+    const expireOldPromotions = useCallback(async () => {
     if (!userData?.id) return
     
     try {
@@ -819,14 +840,33 @@ return {
           .map(p => p.id)
         
         if (endedPromotionIds.length > 0) {
-          await supabase
+          // Item 19 fix: only mark read notifications for ACTUALLY ended raffles
+          const { data: unreadPromoNotifs } = await supabase
             .from('notifications')
-            .update({ read: true, read_at: new Date().toISOString() })
+            .select('id, action_data, type')
             .eq('user_id', userData.id)
             .eq('read', false)
             .in('type', ['promotion_available', 'raffle_announcement', 'promotion_reminder'])
-          
-          loadNotificationsData()
+
+          const idsToMarkRead = (unreadPromoNotifs || [])
+            .filter(n => {
+              try {
+                const parsed = typeof n.action_data === 'string'
+                  ? JSON.parse(n.action_data)
+                  : n.action_data
+                return parsed?.promotionId && endedPromotionIds.includes(parsed.promotionId)
+              } catch { return false }
+            })
+            .map(n => n.id)
+
+          if (idsToMarkRead.length > 0) {
+            await supabase
+              .from('notifications')
+              .update({ read: true, read_at: new Date().toISOString() })
+              .in('id', idsToMarkRead)
+            
+            loadNotificationsData()
+          }
         }
       }
     } catch (error) {
@@ -1339,11 +1379,12 @@ return {
         })
       })
       const result = await response.json()
-      if (result.success) {
+            if (result.success) {
         alert(`✅ ${result.message}`)
         setShowPromotionModal(false)
         setActivePromotion(null)
         refreshAllData()
+        loadNotificationsData()  // ← Item 21: refresh pinned raffles count
       } else {
         alert(`❌ ${result.error}`)
       }
@@ -1679,6 +1720,100 @@ return {
     </div>
   )
 
+    // ============================================
+  // Item 21 — Active Raffles Section (pinned in dropdown)
+  // ============================================
+  const ActiveRafflesSection = () => {
+    if (pinnedRaffles.length === 0) return null
+
+    const now = new Date()
+
+    return (
+      <div style={{ borderBottom: '2px solid #00ff88', background: 'rgba(0, 255, 136, 0.03)' }}>
+        <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h4 style={{ color: '#00ff88', margin: 0, fontSize: 13, fontWeight: 'bold', letterSpacing: 0.5 }}>
+            🎲 ACTIVE RAFFLES
+          </h4>
+          <span style={{ color: '#666', fontSize: 10 }}>{pinnedRaffles.length} open</span>
+        </div>
+        {pinnedRaffles.map(raffle => {
+          const userEntries = raffle.user_entries || 0
+          const maxEntries = raffle.max_entries_per_user || 1
+          const isMaxed = userEntries >= maxEntries
+          const isPartial = userEntries > 0 && userEntries < maxEntries
+          const totalPool = (raffle.total_entries || 0) + (raffle.redeemed_tickets_count || 0)
+
+          const daysUntilEnd = Math.ceil(
+            (new Date(raffle.end_date).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+          )
+          const isUrgent = daysUntilEnd <= 3 && daysUntilEnd >= 0
+
+          return (
+            <div
+              key={raffle.id}
+              onClick={() => {
+                if (!isMaxed) {
+                  setActivePromotion(raffle)
+                  setShowPromotionModal(true)
+                  setShowNotificationDropdown(false)
+                }
+              }}
+              style={{
+                padding: '12px 16px',
+                borderBottom: '1px solid #252530',
+                cursor: isMaxed ? 'default' : 'pointer',
+                background: '#0d0d12',
+                transition: 'background 0.15s'
+              }}
+              onMouseEnter={(e) => { if (!isMaxed) e.currentTarget.style.background = '#1a1a24' }}
+              onMouseLeave={(e) => e.currentTarget.style.background = '#0d0d12'}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ color: 'white', fontSize: 13, fontWeight: 'bold', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    🎲 {raffle.title}
+                  </div>
+                  <div style={{ color: '#888', fontSize: 11, marginBottom: 4 }}>
+                    {isUrgent && <span style={{ color: '#ffa502', fontWeight: 'bold' }}>⏰ Ends in {daysUntilEnd}d · </span>}
+                    Ends {new Date(raffle.end_date).toLocaleDateString()} · {raffle.entry_cost.toLocaleString()} pts · {totalPool} entries
+                  </div>
+                  {userEntries === 0 && (
+                    <div style={{ color: '#00ccff', fontSize: 11, fontWeight: 'bold' }}>
+                      Not entered yet · Tap to enter
+                    </div>
+                  )}
+                  {isPartial && (
+                    <div style={{ color: '#00ff88', fontSize: 11 }}>
+                      ✅ You have {userEntries} of {maxEntries} entries · Tap to enter more
+                    </div>
+                  )}
+                  {isMaxed && (
+                    <div style={{ color: '#ffa502', fontSize: 11 }}>
+                      ✅ You're entered ({maxEntries} of {maxEntries}) · Max reached
+                    </div>
+                  )}
+                </div>
+                {!isMaxed && (
+                  <div style={{
+                    background: '#00ff88',
+                    color: '#0d0d12',
+                    padding: '4px 10px',
+                    borderRadius: 100,
+                    fontSize: 11,
+                    fontWeight: 'bold',
+                    whiteSpace: 'nowrap'
+                  }}>
+                    Enter
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
   const NotificationDropdown = () => (
     <>
       <div 
@@ -1733,10 +1868,14 @@ return {
           )}
         </div>
         
-        {notifications.length === 0 ? (
+                <ActiveRafflesSection />
+
+        {notifications.filter(n => n.type !== 'promotion_available').length === 0 && pinnedRaffles.length === 0 ? (
           <p style={{ color: '#aaa', textAlign: 'center', padding: '30px' }}>No notifications yet</p>
+        ) : notifications.filter(n => n.type !== 'promotion_available').length === 0 ? (
+          <p style={{ color: '#666', textAlign: 'center', padding: '20px', fontSize: 12 }}>No other notifications</p>
         ) : (
-          notifications.map(notification => (
+          notifications.filter(n => n.type !== 'promotion_available').map(notification => (
             <div
               key={notification.id}
               onClick={() => handleNotificationClick(notification)}

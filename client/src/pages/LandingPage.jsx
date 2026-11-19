@@ -1,11 +1,30 @@
 // client/src/pages/LandingPage.jsx
-// THE MATRIX V5.0 - Professional Clean Design | Original Content Preserved
+// THE MATRIX V5.0 — Pre-Launch Countdown Page
+// Waitlist disabled. Entry only available after LAUNCH_DATE.
 
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+
+const SIGMA_ICONS = {
+  comingSoon: '/assets/sigma-icon-coming-soon.png',
+  liveStats: '/assets/sigma-icon-live-stats.png',
+  raffles: '/assets/sigma-icon-raffles.png',
+  bonuses: '/assets/sigma-icon-bonuses.png',
+  shopPoints: '/assets/sigma-icon-shop-points.png',
+  crediPoints: '/assets/sigma-icon-credipoints.png',
+}
+
+const FALLBACK_ICONS = {
+  comingSoon: '🚀',
+  liveStats: '📊',
+  raffles: '🎲',
+  bonuses: '🏆',
+  shopPoints: '🛍️',
+  crediPoints: '💳',
+}
 
 function LandingPage() {
   const navigate = useNavigate()
@@ -14,32 +33,41 @@ function LandingPage() {
   const [activeModal, setActiveModal] = useState(null)
   const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
   const [isLaunched, setIsLaunched] = useState(false)
-  
   const [showTermsModal, setShowTermsModal] = useState(false)
   const [showPrivacyModal, setShowPrivacyModal] = useState(false)
-  
   const [slideIndex, setSlideIndex] = useState(0)
   const [fade, setFade] = useState(true)
+  const [hoveredCard, setHoveredCard] = useState(null)
+  const [animatedHovered, setAnimatedHovered] = useState(false)
+  const [iconsLoaded, setIconsLoaded] = useState(false)
 
-  const [showWaitlistModal, setShowWaitlistModal] = useState(false)
-  const [waitlistName, setWaitlistName] = useState('')
-  const [waitlistAlias, setWaitlistAlias] = useState('')
-  const [waitlistEmail, setWaitlistEmail] = useState('')
-  const [waitlistPassword, setWaitlistPassword] = useState('')
-  const [waitlistConfirmPassword, setWaitlistConfirmPassword] = useState('')
-  const [waitlistLoading, setWaitlistLoading] = useState(false)
-  const [waitlistResult, setWaitlistResult] = useState(null)
-
-  const LAUNCH_DATE = new Date('2026-06-01T00:00:00')
+  // ⚠️ SET YOUR LAUNCH DATE HERE
+  const LAUNCH_DATE = new Date('2026-11-25T00:00:00')
 
   const slides = [
-    { icon: '🚀', title: 'Coming Soon!' },
-    { icon: '📊', title: 'Live Stats' },
-    { icon: '🎲', title: 'Raffles' },
-    { icon: '🏆', title: 'Bonuses' },
-    { icon: '🛍️', title: 'Shop with Points' },
-    { icon: '💳', title: 'CrediPoints' }
+    { iconKey: 'comingSoon', title: 'Coming Soon!' },
+    { iconKey: 'liveStats', title: 'Live Stats' },
+    { iconKey: 'raffles', title: 'Raffles' },
+    { iconKey: 'bonuses', title: 'Bonuses' },
+    { iconKey: 'shopPoints', title: 'Shop with Points' },
+    { iconKey: 'crediPoints', title: 'CrediPoints' }
   ]
+
+  useEffect(() => {
+    const preloadImages = async () => {
+      const promises = Object.values(SIGMA_ICONS).map(src => {
+        return new Promise((resolve) => {
+          const img = new Image()
+          img.onload = () => resolve(true)
+          img.onerror = () => resolve(false)
+          img.src = src
+        })
+      })
+      const results = await Promise.all(promises)
+      setIconsLoaded(results.some(r => r))
+    }
+    preloadImages()
+  }, [])
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -50,7 +78,7 @@ function LandingPage() {
       }, 300)
     }, 3000)
     return () => clearInterval(interval)
-  }, [])
+  }, [slides.length])
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -59,7 +87,6 @@ function LandingPage() {
 
     const params = new URLSearchParams(window.location.search)
     const refCode = params.get('ref')
-    
     if (refCode) {
       localStorage.setItem('pendingReferral', refCode)
       setReferralBanner({ show: true, code: refCode })
@@ -73,13 +100,11 @@ function LandingPage() {
   const updateCountdown = () => {
     const now = new Date()
     const diff = LAUNCH_DATE - now
-
     if (diff <= 0) {
       setIsLaunched(true)
       setCountdown({ days: 0, hours: 0, minutes: 0, seconds: 0 })
       return
     }
-
     setCountdown({
       days: Math.floor(diff / (1000 * 60 * 60 * 24)),
       hours: Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
@@ -89,23 +114,20 @@ function LandingPage() {
     setIsLaunched(false)
   }
 
-  // ============================================
-  // MODIFIED: Added session check at the beginning
-  // ============================================
+  // ⚠️ WAITLIST DISABLED — this function only routes for post-launch or existing sessions
   const handleMainTileClick = () => {
-    const pendingRef = localStorage.getItem('pendingReferral')
-    
-    // NEW: If user is already logged in, redirect to appropriate dashboard
-    if (session) {
-      if (isLaunched) {
-        navigate('/dashboard')
-      } else {
-        navigate('/waitlist')
-      }
+    // Before launch: no action at all (button is visually inactive)
+    if (!isLaunched && !session) {
       return
     }
-    
-    // Original logic continues below (unchanged)
+
+    const pendingRef = localStorage.getItem('pendingReferral')
+
+    if (session) {
+      navigate('/dashboard')
+      return
+    }
+
     if (isLaunched) {
       if (pendingRef) {
         navigate(`/signup?ref=${pendingRef}`)
@@ -113,42 +135,21 @@ function LandingPage() {
       } else {
         navigate('/login')
       }
-    } else {
-      if (pendingRef) {
-        sessionStorage.setItem('waitlistReferralCode', pendingRef)
-      }
-      setShowWaitlistModal(true)
     }
   }
 
-  // ============================================
-  // NEW: Handle login button click with session check
-  // ============================================
   const handleLoginClick = () => {
     if (session) {
-      // Already logged in, redirect to appropriate dashboard
-      if (isLaunched) {
-        navigate('/dashboard')
-      } else {
-        navigate('/waitlist')
-      }
-    } else {
+      navigate(isLaunched ? '/dashboard' : '/dashboard')
+    } else if (isLaunched) {
       navigate('/login')
     }
   }
 
-  // ============================================
-  // NEW: Handle signup button click with session check
-  // ============================================
   const handleSignupClick = () => {
     if (session) {
-      // Already logged in, redirect to appropriate dashboard
-      if (isLaunched) {
-        navigate('/dashboard')
-      } else {
-        navigate('/waitlist')
-      }
-    } else {
+      navigate('/dashboard')
+    } else if (isLaunched) {
       navigate('/signup')
     }
   }
@@ -157,81 +158,10 @@ function LandingPage() {
     setReferralBanner({ show: false, code: '' })
   }
 
-  const handleJoinWaitlist = async () => {
-    if (!waitlistName || !waitlistAlias || !waitlistEmail || !waitlistPassword) {
-      alert('Please enter your name, alias, email, and password')
-      return
-    }
-
-    if (waitlistPassword !== waitlistConfirmPassword) {
-      alert('Passwords do not match')
-      return
-    }
-
-    if (waitlistPassword.length < 6) {
-      alert('Password must be at least 6 characters')
-      return
-    }
-
-    setWaitlistLoading(true)
-    try {
-      let refCode = sessionStorage.getItem('waitlistReferralCode')
-      if (!refCode) {
-        const urlParams = new URLSearchParams(window.location.search)
-        refCode = urlParams.get('ref')
-      }
-      
-      if (refCode) {
-        sessionStorage.removeItem('waitlistReferralCode')
-      }
-      
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: waitlistEmail,
-        password: waitlistPassword,
-        options: {
-          data: {
-            name: waitlistName,
-            alias: waitlistAlias,
-            account_status: 'waitlist'
-          }
-        }
-      })
-
-      if (authError) throw authError
-      if (!authData.user) throw new Error('Failed to create account')
-
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/join-waitlist`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: waitlistName,
-          alias: waitlistAlias,
-          email: waitlistEmail,
-          referralCode: refCode || null,
-          userId: authData.user.id
-        })
-      })
-
-      const result = await response.json()
-      
-      if (result.success) {
-        localStorage.removeItem('pendingReferral')
-        sessionStorage.removeItem('waitlistReferralCode')
-        setWaitlistResult(result)
-      } else {
-        alert('Error: ' + result.error)
-      }
-    } catch (error) {
-      alert('Error joining waitlist: ' + error.message)
-    } finally {
-      setWaitlistLoading(false)
-    }
-  }
-
   const formatNumber = (num) => String(num).padStart(2, '0')
 
   // ============================================
-  // MODAL CONTENT - YOUR ORIGINAL CONTENT (unchanged)
+  // MODAL CONTENT — About / Ethos / How It Works / Help
   // ============================================
 
   const renderModalContent = () => {
@@ -271,7 +201,7 @@ function LandingPage() {
               <li><strong style={{ color: '#00ff88' }}>Opportunity:</strong> Everyone gets a chance, even without recruiting.</li>
             </ul>
             <h3 style={{ color: '#00ccff', marginBottom: '10px', fontSize: '18px' }}>The Journey</h3>
-            <p style={{ color: '#ccc', marginBottom: '10px', lineHeight: '1.6', fontSize: '14px' }}><strong>Launch Date:</strong> June 1, 2026</p>
+            <p style={{ color: '#ccc', marginBottom: '10px', lineHeight: '1.6', fontSize: '14px' }}><strong>Launch Date:</strong> November 25, 2026</p>
             <p style={{ color: '#ccc', marginBottom: '20px', lineHeight: '1.6', fontSize: '14px' }}><strong>Vision:</strong> Build a self-sustaining community-owned ecosystem</p>
           </div>
         )
@@ -284,7 +214,7 @@ function LandingPage() {
             <h3 style={{ color: '#00ccff', marginBottom: '10px', fontSize: '18px' }}>Entry</h3>
             <p style={{ color: '#ccc', marginBottom: '20px', lineHeight: '1.6', fontSize: '14px' }}>Participants acquire points to secure their position in the matrix.</p>
             <h3 style={{ color: '#00ccff', marginBottom: '10px', fontSize: '18px' }}>Earning Potential</h3>
-            <p style={{ color: '#ccc', marginBottom: '20px', lineHeight: '1.6', fontSize: '14px' }}>Earnings are distributed through a multi-level structure that rewards contribution to the community.</p>
+            <p style={{ color: '#ccc', marginBottom: '20px', lineHeight: '1.6', fontSize: '14px' }}>Earnings are distributed through structured community rewards.</p>
             <h3 style={{ color: '#00ccff', marginBottom: '10px', fontSize: '18px' }}>Community Pool</h3>
             <p style={{ color: '#ccc', marginBottom: '20px', lineHeight: '1.6', fontSize: '14px' }}>A portion of every transaction flows into a community-owned fund used to support ongoing growth and provide auto-entry opportunities.</p>
             <h3 style={{ color: '#00ccff', marginBottom: '10px', fontSize: '18px' }}>Sustainable by Design</h3>
@@ -295,106 +225,61 @@ function LandingPage() {
         return (
           <div style={{ maxHeight: '70vh', overflowY: 'auto' }}>
             <h2 style={{ color: '#00ff88', marginBottom: '20px', fontSize: '22px' }}>📚 Help & FAQs</h2>
-            
+
             <div style={{ marginBottom: '20px' }}>
               <p style={{ color: '#00ff88', marginBottom: '8px', fontSize: '16px', fontWeight: 'bold' }}>1. Is this a pyramid scheme?</p>
-              <p style={{ color: '#aaa', fontSize: '14px', lineHeight: '1.5' }}>
-                Absolutely not. The Matrix is a community wealth-building platform, akin to how a co-operative functions. 
-                We've engineered out the predatory mechanics and replaced them with transparency, fairness, and shared ownership. 
-                Matrix positions are digital assets with utility (point earnings, shop access, asset ownership); and you NEVER have to recruit/refer anyone if you don't want to.
-              </p>
+              <p style={{ color: '#aaa', fontSize: '14px', lineHeight: '1.5' }}>Absolutely not. The Matrix is a community wealth-building platform, akin to how a co-operative functions. We've engineered out the predatory mechanics and replaced them with transparency, fairness, and shared ownership. Matrix positions are digital assets with utility (point earnings, shop access, asset ownership); and you NEVER have to recruit/refer anyone if you don't want to.</p>
             </div>
 
             <div style={{ marginBottom: '20px' }}>
               <p style={{ color: '#00ff88', marginBottom: '8px', fontSize: '16px', fontWeight: 'bold' }}>2. What is a "sub-root"?</p>
-              <p style={{ color: '#aaa', fontSize: '14px', lineHeight: '1.5' }}>
-                Every spot (absolute position) you own is the root of its own 85‑spot sub‑matrix. 
-                This sub‑matrix is used for commission calculations on entries placed under you.
-              </p>
+              <p style={{ color: '#aaa', fontSize: '14px', lineHeight: '1.5' }}>Every spot (absolute position) you own is the root of its own 85-spot sub-matrix. This sub-matrix is used for commission calculations on entries placed under you.</p>
             </div>
 
             <div style={{ marginBottom: '20px' }}>
               <p style={{ color: '#00ff88', marginBottom: '8px', fontSize: '16px', fontWeight: 'bold' }}>3. How do I earn commissions?</p>
-              <p style={{ color: '#aaa', fontSize: '14px', lineHeight: '1.5' }}>
-                You earn from point purchases made within your 3‑level downline (your direct referrals, their referrals, and their referrals). 
-                The exact breakdown is displayed in every transaction in your dashboard.
-              </p>
+              <p style={{ color: '#aaa', fontSize: '14px', lineHeight: '1.5' }}>You earn from point purchases made within your 3-level downline (your direct referrals, their referrals, and their referrals). The exact breakdown is displayed in every transaction in your dashboard.</p>
             </div>
 
             <div style={{ marginBottom: '20px' }}>
               <p style={{ color: '#00ff88', marginBottom: '8px', fontSize: '16px', fontWeight: 'bold' }}>4. What is the Recovery Fund?</p>
-              <p style={{ color: '#aaa', fontSize: '14px', lineHeight: '1.5' }}>
-                A community‑owned capital pool funded by each and every purchase. 
-                It will eventually be used to acquire assets (digital, real estate, businesses) that benefit all members.
-              </p>
+              <p style={{ color: '#aaa', fontSize: '14px', lineHeight: '1.5' }}>A community-owned capital pool funded by each and every purchase. It will eventually be used to acquire assets (digital, real estate, businesses) that benefit all members.</p>
             </div>
 
             <div style={{ marginBottom: '20px' }}>
               <p style={{ color: '#00ff88', marginBottom: '8px', fontSize: '16px', fontWeight: 'bold' }}>5. What are "CrediPoints"?</p>
-              <p style={{ color: '#aaa', fontSize: '14px', lineHeight: '1.5' }}>
-                A future digital benefit; details will be announced as the feature develops.
-              </p>
+              <p style={{ color: '#aaa', fontSize: '14px', lineHeight: '1.5' }}>A future digital benefit; details will be announced as the feature develops.</p>
             </div>
 
             <div style={{ marginBottom: '20px' }}>
               <p style={{ color: '#00ff88', marginBottom: '8px', fontSize: '16px', fontWeight: 'bold' }}>6. Can I move up the waitlist?</p>
-              <p style={{ color: '#aaa', fontSize: '14px', lineHeight: '1.5' }}>
-                Yes, your position can be improved by referring new members. Each time someone joins using your waitlist link, you are rewarded by advancing one spot ahead.
-              </p>
+              <p style={{ color: '#aaa', fontSize: '14px', lineHeight: '1.5' }}>Yes, your position can be improved by referring new members. Each time someone joins using your waitlist link, you are rewarded by advancing one spot ahead.</p>
             </div>
 
             <div style={{ marginBottom: '20px' }}>
-              <p style={{ color: '#00ff88', marginBottom: '8px', fontSize: '16px', fontWeight: 'bold' }}>7. What happens after June 1, 2026?</p>
-              <p style={{ color: '#aaa', fontSize: '14px', lineHeight: '1.5' }}>
-                The live Matrix system launches. Waitlist positions are converted into matrix spots, 
-                and you can then buy points, earn commissions, and use the platform.
-              </p>
+              <p style={{ color: '#00ff88', marginBottom: '8px', fontSize: '16px', fontWeight: 'bold' }}>7. What happens after July 15, 2026?</p>
+              <p style={{ color: '#aaa', fontSize: '14px', lineHeight: '1.5' }}>The live Matrix system launches. Waitlist positions are converted into matrix spots, and you can then buy points, earn commissions, and use the platform.</p>
             </div>
 
             <div style={{ marginBottom: '20px' }}>
               <p style={{ color: '#00ff88', marginBottom: '8px', fontSize: '16px', fontWeight: 'bold' }}>8. Can I lose points?</p>
-              <p style={{ color: '#aaa', fontSize: '14px', lineHeight: '1.5' }}>
-                Points have no guaranteed cash value. You may lose the value of points you purchase, and commissions are not guaranteed. 
-                The system is a digital asset, not an investment.
-              </p>
+              <p style={{ color: '#aaa', fontSize: '14px', lineHeight: '1.5' }}>Points have no guaranteed cash value. You may lose the value of points you purchase, and commissions are not guaranteed. The system is a digital asset, not an investment.</p>
             </div>
 
             <div style={{ marginBottom: '20px' }}>
               <p style={{ color: '#00ff88', marginBottom: '8px', fontSize: '16px', fontWeight: 'bold' }}>9. What is the "Auto-Entry" feature?</p>
-              <p style={{ color: '#aaa', fontSize: '14px', lineHeight: '1.5' }}>
-                A mechanism that gives non‑recruiters a chance to receive commissions through the Recovery Fund, 
-                ensuring that everyone has an opportunity to participate.
-              </p>
+              <p style={{ color: '#aaa', fontSize: '14px', lineHeight: '1.5' }}>A mechanism that gives non-recruiters a chance to receive commissions through the Recovery Fund, ensuring that everyone has an opportunity to participate.</p>
             </div>
 
             <div style={{ marginBottom: '20px' }}>
               <p style={{ color: '#00ff88', marginBottom: '8px', fontSize: '16px', fontWeight: 'bold' }}>10. How do I get an activation code?</p>
-              <p style={{ color: '#aaa', fontSize: '14px', lineHeight: '1.5' }}>
-                Activation codes function similar to gift cards. They're worth 50,000 points and are only available through authorised agents. 
-                Contact support via email or engage an agent to purchase one. Agents are accessible via the WhatsApp link below.
-              </p>
+              <p style={{ color: '#aaa', fontSize: '14px', lineHeight: '1.5' }}>Activation codes function similar to gift cards. They're worth 5,000 points and are only available through authorised agents. Contact support via email or engage an agent to purchase one. Agents are accessible via the WhatsApp link below.</p>
             </div>
 
             <div style={{ background: '#0a0a2a', padding: '20px', borderRadius: '10px', marginTop: '20px', textAlign: 'center' }}>
               <p style={{ color: '#00ff88', marginBottom: '15px', fontSize: '16px' }}>📧 Need more help?</p>
               <p style={{ color: '#aaa', marginBottom: '15px' }}>Email us: <a href="mailto:hello@the-matrix.app" style={{ color: '#00ccff' }}>hello@the-matrix.app</a></p>
-              <a
-                href="https://chat.whatsapp.com/IMRG4tKz9K6G2DntpdnVvu"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  background: '#25D366',
-                  color: 'white',
-                  padding: '10px 20px',
-                  borderRadius: '50px',
-                  textDecoration: 'none',
-                  fontWeight: 'bold',
-                  marginTop: '5px'
-                }}
-              >
+              <a href="https://chat.whatsapp.com/IMRG4tKz9K6G2DntpdnVvu" target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: '#25D366', color: 'white', padding: '10px 20px', borderRadius: '50px', textDecoration: 'none', fontWeight: 'bold', marginTop: '5px' }}>
                 <span>📱</span> Join our WhatsApp Group
               </a>
             </div>
@@ -407,425 +292,291 @@ function LandingPage() {
 
   const currentSlide = slides[slideIndex]
 
-  // ============================================
-  // CLEAN STYLES - Only styling, no content changes
-  // ============================================
-
   const styles = {
-    container: {
-      minHeight: '100vh',
-      background: '#0d0d12',
-      padding: '24px',
-    },
-    content: {
-      maxWidth: '1200px',
-      margin: '0 auto',
-    },
-    header: {
-      textAlign: 'center',
-      marginBottom: '48px',
-    },
-    logo: {
-      color: '#00ff88',
-      fontSize: 'clamp(32px, 8vw, 48px)',
-      marginBottom: '8px',
-      letterSpacing: '-0.02em',
-    },
-    tagline: {
-      color: '#666',
-      fontSize: 'clamp(14px, 4vw, 18px)',
-    },
-    grid: {
-      display: 'flex',
-      flexWrap: 'wrap',
-      justifyContent: 'center',
-      gap: '20px',
-      marginBottom: '60px',
-    },
-    card: {
-      background: '#16161f',
-      padding: '24px',
-      borderRadius: '16px',
-      textAlign: 'center',
-      cursor: 'pointer',
-      transition: 'all 0.2s ease',
-      flex: '1 1 calc(50% - 20px)',
-      minWidth: 'calc(50% - 20px)',
-      maxWidth: '350px',
-      border: '1px solid #252530',
-    },
-    cardHover: {
-      transform: 'translateY(-4px)',
-      borderColor: '#00ff88',
-      boxShadow: '0 8px 20px rgba(0,0,0,0.3)',
-    },
-    cardNoHover: {
-      background: '#16161f',
-      padding: '24px',
-      borderRadius: '16px',
-      textAlign: 'center',
-      flex: '1 1 calc(50% - 20px)',
-      minWidth: 'calc(50% - 20px)',
-      maxWidth: '350px',
-      border: '1px solid #252530',
-      transition: 'all 0.2s ease',
-    },
-    cardNoHoverHover: {
-      transform: 'translateY(-4px)',
-      borderColor: '#00ff88',
-      boxShadow: '0 8px 20px rgba(0,0,0,0.3)',
-    },
-    icon: {
-      fontSize: 'clamp(32px, 8vw, 42px)',
-      marginBottom: '12px',
-    },
-    cardTitle: {
-      color: '#fff',
-      fontSize: 'clamp(18px, 5vw, 22px)',
-      marginBottom: '4px',
-    },
-    countdownCard: {
-      background: 'linear-gradient(135deg, #16161f, #0d0d12)',
-      padding: '32px',
-      borderRadius: '16px',
-      textAlign: 'center',
-      cursor: 'pointer',
-      transition: 'all 0.2s ease',
-      flex: '1 1 calc(50% - 20px)',
-      minWidth: 'calc(50% - 20px)',
-      maxWidth: '350px',
-      border: '1px solid #00ff88',
-    },
-    timerBox: {
-      background: '#0d0d12',
-      padding: '12px 16px',
-      borderRadius: '12px',
-      textAlign: 'center',
-      minWidth: '70px',
-    },
-    timerNumber: {
-      fontSize: 'clamp(20px, 5vw, 28px)',
-      fontWeight: 'bold',
-      color: '#00ff88',
-    },
-    timerLabel: {
-      fontSize: '10px',
-      color: '#666',
-      marginTop: '4px',
-    },
-    footer: {
-      textAlign: 'center',
-      padding: '24px',
-      borderTop: '1px solid #252530',
-      color: '#555',
-      fontSize: '12px',
-    },
-    banner: {
-      position: 'fixed',
-      top: '20px',
-      left: '50%',
-      transform: 'translateX(-50%)',
-      background: '#00ff88',
-      padding: '12px 24px',
-      borderRadius: '100px',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '16px',
-      zIndex: 1000,
-      boxShadow: '0 4px 20px rgba(0,255,136,0.2)',
-    },
-    button: {
-      background: '#00ff88',
-      border: 'none',
-      padding: '10px 24px',
-      borderRadius: '100px',
-      fontWeight: 'bold',
-      cursor: 'pointer',
-      color: '#0d0d12',
-    },
-    modalOverlay: {
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      width: '100%',
-      height: '100%',
-      background: 'rgba(0,0,0,0.95)',
-      zIndex: 2000,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '20px',
-    },
-    modalContent: {
-      background: '#16161f',
-      padding: '32px',
-      borderRadius: '20px',
-      maxWidth: '700px',
-      width: '100%',
-      maxHeight: '85vh',
-      overflow: 'auto',
-      border: '1px solid #00ff88',
-      position: 'relative',
-    },
-    waitlistModal: {
-      background: '#16161f',
-      padding: '32px',
-      borderRadius: '20px',
-      maxWidth: '450px',
-      width: '90%',
-      border: '1px solid #00ff88',
-    },
-    input: {
-      width: '100%',
-      padding: '12px',
-      marginBottom: '12px',
-      background: '#0d0d12',
-      border: '1px solid #252530',
-      borderRadius: '8px',
-      color: 'white',
-    },
+    container: { minHeight: '100vh', background: '#0a0a0f', color: '#e0e0e0', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', overflowX: 'hidden', position: 'relative' },
+    ambientGlow: { position: 'fixed', top: '5%', left: '50%', transform: 'translateX(-50%)', width: '500px', height: '500px', background: 'radial-gradient(circle, rgba(0,255,136,0.03) 0%, transparent 70%)', pointerEvents: 'none', zIndex: 0 },
+    content: { maxWidth: '480px', margin: '0 auto', padding: '0 20px', position: 'relative', zIndex: 1 },
+    hero: { textAlign: 'center', paddingTop: referralBanner.show ? '100px' : '60px', paddingBottom: '32px' },
+    logo: { color: '#00ff88', fontSize: 'clamp(36px, 10vw, 48px)', fontWeight: '800', letterSpacing: '0.12em', marginBottom: '12px', textTransform: 'uppercase', textShadow: '0 0 40px rgba(0,255,136,0.25), 0 0 80px rgba(0,255,136,0.08)' },
+    tagline: { color: '#777', fontSize: 'clamp(13px, 3.5vw, 15px)', letterSpacing: '0.08em', fontWeight: '400', marginBottom: '10px' },
+    versionBadge: { display: 'inline-block', background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.15)', color: '#00ff88', padding: '3px 12px', borderRadius: '100px', fontSize: '10px', fontWeight: '600', letterSpacing: '0.1em' },
+    welcomeBack: { color: '#00ccff', marginTop: '14px', fontSize: '13px', fontWeight: '500' },
+    grid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '36px' },
+    card: { background: 'linear-gradient(145deg, #12121a, #0e0e15)', padding: '20px 14px', borderRadius: '16px', textAlign: 'center', cursor: 'pointer', transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)', border: '1px solid rgba(255,255,255,0.04)', position: 'relative', overflow: 'hidden', minHeight: '110px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' },
+    cardActive: { borderColor: 'rgba(0,255,136,0.25)', boxShadow: '0 4px 20px rgba(0,255,136,0.06), inset 0 1px 0 rgba(255,255,255,0.04)', transform: 'translateY(-2px)' },
+    sigmaIcon: { width: '100%', height: 'auto', maxHeight: '70px', objectFit: 'contain', filter: 'drop-shadow(0 2px 8px rgba(0,255,136,0.15))', marginBottom: '0' },
+    sigmaIconLarge: { width: '52px', height: '52px', marginBottom: '10px', objectFit: 'contain', filter: 'drop-shadow(0 2px 12px rgba(0,255,136,0.2))' },
+    cardTitle: { color: '#ddd', fontSize: '12px', fontWeight: '600', letterSpacing: '0.02em' },
+    featuredCard: { background: 'linear-gradient(145deg, #0d1f15, #0a1a12)', padding: '28px 20px', borderRadius: '20px', textAlign: 'center', cursor: 'pointer', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', border: '1px solid rgba(0,255,136,0.12)', position: 'relative', overflow: 'hidden', gridColumn: '1 / -1', boxShadow: '0 8px 32px rgba(0,255,136,0.05)', minHeight: '180px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' },
+    featuredCardActive: { borderColor: 'rgba(0,255,136,0.35)', boxShadow: '0 12px 40px rgba(0,255,136,0.1), 0 0 60px rgba(0,255,136,0.03)', transform: 'translateY(-3px)' },
+    featuredTitle: { color: '#00ff88', fontSize: '20px', fontWeight: '700', letterSpacing: '0.05em', marginBottom: '14px' },
+    timerContainer: { display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '14px', marginBottom: '10px' },
+    timerBox: { background: 'rgba(0,0,0,0.35)', padding: '10px 6px', borderRadius: '10px', textAlign: 'center', minWidth: '54px', border: '1px solid rgba(0,255,136,0.08)' },
+    timerNumber: { fontSize: '20px', fontWeight: '800', color: '#00ff88', fontFamily: '"SF Mono", Monaco, monospace', letterSpacing: '-0.02em', lineHeight: 1 },
+    timerLabel: { fontSize: '8px', color: '#555', marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.12em' },
+    timerSeparator: { color: '#00ff88', fontSize: '18px', fontWeight: 'bold', alignSelf: 'center', opacity: 0.4, paddingTop: '4px' },
+    launchDate: { color: '#555', fontSize: '11px', marginTop: '6px', letterSpacing: '0.05em' },
+    statsCard: { background: 'linear-gradient(145deg, #12121a, #0e0e15)', padding: '16px 10px', borderRadius: '16px', textAlign: 'center', border: '1px solid rgba(255,255,255,0.04)', position: 'relative', overflow: 'hidden', minHeight: '100px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' },
+    statsIcon: { width: '48px', height: '48px', marginBottom: '6px', objectFit: 'contain', transition: 'opacity 0.3s ease', filter: 'drop-shadow(0 2px 8px rgba(0,255,136,0.15))' },
+    statsTitle: { color: '#00ff88', fontSize: '15px', fontWeight: '600', transition: 'opacity 0.3s ease' },
+    helpCard: { background: 'linear-gradient(145deg, #12121a, #0e0e15)', padding: '18px 14px', borderRadius: '16px', textAlign: 'center', cursor: 'pointer', transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)', border: '1px solid rgba(255,255,255,0.04)', position: 'relative', overflow: 'hidden', minHeight: '130px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between' },
+    loginBtn: { background: 'linear-gradient(135deg, #00ccff, #0099cc)', border: 'none', padding: '7px 18px', borderRadius: '100px', fontWeight: '600', cursor: 'pointer', color: '#0a0a0f', fontSize: '11px', letterSpacing: '0.05em', marginTop: '8px', transition: 'all 0.2s ease', boxShadow: '0 4px 15px rgba(0,204,255,0.15)' },
+    footer: { textAlign: 'center', padding: '28px 20px 36px', borderTop: '1px solid rgba(255,255,255,0.04)', marginTop: '16px' },
+    footerTagline: { color: '#444', fontSize: '12px', fontWeight: '500', letterSpacing: '0.05em', marginBottom: '14px' },
+    footerLinks: { color: '#333', fontSize: '10px', lineHeight: '1.8' },
+    footerLink: { color: '#00ccff', cursor: 'pointer', textDecoration: 'none' },
+    banner: { position: 'fixed', top: '16px', left: '50%', transform: 'translateX(-50%)', background: 'linear-gradient(135deg, #00ff88, #00cc66)', padding: '10px 18px', borderRadius: '100px', display: 'flex', alignItems: 'center', gap: '10px', zIndex: 1000, boxShadow: '0 8px 30px rgba(0,255,136,0.25)', maxWidth: '92vw', fontSize: '12px', fontWeight: '600', color: '#0a0a0f' },
+    bannerDismiss: { background: 'rgba(0,0,0,0.12)', border: 'none', width: '22px', height: '22px', borderRadius: '50%', color: '#0a0a0f', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+    modalOverlay: { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(6px)', zIndex: 2000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: '0' },
+    modalContent: { background: 'linear-gradient(180deg, #16161f, #0f0f17)', padding: '28px 24px', borderRadius: '24px 24px 0 0', maxWidth: '100%', width: '100%', maxHeight: '85vh', overflow: 'auto', border: '1px solid rgba(0,255,136,0.08)', borderBottom: 'none', position: 'relative', animation: 'slideUp 0.3s ease-out' },
+    modalClose: { position: 'absolute', top: '14px', right: '14px', background: 'rgba(255,255,255,0.05)', border: 'none', width: '34px', height: '34px', borderRadius: '50%', color: '#777', fontSize: '16px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 },
   }
 
-  const [hoveredCard, setHoveredCard] = useState(null)
-  const [animatedHovered, setAnimatedHovered] = useState(false)
+  const renderIcon = (iconKey, size = 'normal') => {
+    const src = SIGMA_ICONS[iconKey]
+    const fallback = FALLBACK_ICONS[iconKey]
+    const style = size === 'large' ? styles.sigmaIconLarge : styles.sigmaIcon
+    if (iconsLoaded && src) {
+      return <img src={src} alt={iconKey} style={style} />
+    }
+    return (
+      <div style={{ fontSize: size === 'large' ? '36px' : '26px', marginBottom: '8px', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))' }}>
+        {fallback}
+      </div>
+    )
+  }
+
+  const getCardStyle = (cardId, isFeatured = false, isStats = false, isHelp = false) => {
+    const isHovered = hoveredCard === cardId
+    if (isFeatured) return { ...styles.featuredCard, ...(isHovered ? styles.featuredCardActive : {}) }
+    if (isStats) return styles.statsCard
+    if (isHelp) return { ...styles.helpCard, ...(isHovered ? styles.cardActive : {}) }
+    return { ...styles.card, ...(isHovered ? styles.cardActive : {}) }
+  }
 
   return (
     <div style={styles.container}>
-      {/* Referral Banner */}
-      {referralBanner.show && (
+      <div style={styles.ambientGlow} />
+
+      <style>{`
+        @keyframes slideUp {
+          from { transform: translateY(100%); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+      `}</style>
+
+      {/* Referral banner — only shown AFTER launch */}
+      {referralBanner.show && isLaunched && (
         <div style={styles.banner}>
-          <span>🎉</span>
-          <span style={{ fontWeight: 'bold', color: '#0d0d12' }}>You've Been Invited! Secure Your Spot Now</span>
-          <button onClick={handleDismissBanner} style={{ background: 'transparent', border: 'none', color: '#0d0d12', fontSize: '18px', cursor: 'pointer' }}>✕</button>
+          <span style={{ fontSize: '15px' }}>🎉</span>
+          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            Invited! Secure Your Spot
+          </span>
+          <button onClick={handleDismissBanner} style={styles.bannerDismiss}>✕</button>
         </div>
       )}
 
-      <div style={{ ...styles.content, paddingTop: referralBanner.show ? '80px' : '0' }}>
-        {/* Header */}
-        <div style={styles.header}>
-          <h1 style={styles.logo}>THE MATRIX</h1>
+      <div style={styles.content}>
+        <div style={styles.hero}>
+          <h1 style={styles.logo}>SIGMA-PLUS</h1>
           <p style={styles.tagline}>Together We Will All Prosper</p>
-          {session && <p style={{ color: '#00ccff', marginTop: '12px' }}>Welcome back!</p>}
+          <span style={styles.versionBadge}>V5.0</span>
+          {session && <p style={styles.welcomeBack}>Welcome back!</p>}
         </div>
 
-        {/* Tile Grid */}
         <div style={styles.grid}>
-          {/* About Tile */}
+          {/* About */}
           <div
             onMouseEnter={() => setHoveredCard('about')}
             onMouseLeave={() => setHoveredCard(null)}
             onClick={() => setActiveModal('about')}
-            style={{ ...styles.card, ...(hoveredCard === 'about' ? styles.cardHover : {}) }}
+            style={getCardStyle('about')}
           >
-            <div style={styles.icon}>ℹ️</div>
+            <div style={{ fontSize: '26px', marginBottom: '8px' }}>ℹ️</div>
             <h2 style={styles.cardTitle}>About</h2>
           </div>
 
-          {/* Ethos Tile */}
+          {/* Ethos */}
           <div
             onMouseEnter={() => setHoveredCard('ethos')}
             onMouseLeave={() => setHoveredCard(null)}
             onClick={() => setActiveModal('ethos')}
-            style={{ ...styles.card, ...(hoveredCard === 'ethos' ? styles.cardHover : {}) }}
+            style={getCardStyle('ethos')}
           >
-            <div style={styles.icon}>📜</div>
+            <div style={{ fontSize: '26px', marginBottom: '8px' }}>📜</div>
             <h2 style={styles.cardTitle}>Ethos</h2>
           </div>
 
-          {/* Animated Stats Tile */}
+          {/* Stats Carousel */}
           <div
-            onMouseEnter={() => setAnimatedHovered(true)}
-            onMouseLeave={() => setAnimatedHovered(false)}
-            style={{ ...styles.cardNoHover, ...(animatedHovered ? styles.cardNoHoverHover : {}) }}
+            onMouseEnter={() => { setHoveredCard('stats'); setAnimatedHovered(true) }}
+            onMouseLeave={() => { setHoveredCard(null); setAnimatedHovered(false) }}
+            style={getCardStyle('stats', false, false, true)}
           >
-            <div style={{ ...styles.icon, opacity: fade ? 1 : 0, transition: 'opacity 0.3s' }}>{currentSlide.icon}</div>
-            <h2 style={{ ...styles.cardTitle, color: '#00ff88' }}>{currentSlide.title}</h2>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '12px' }}>
-              {slides.map((_, idx) => (
-                <div key={idx} style={{ width: '6px', height: '6px', borderRadius: '50%', background: idx === slideIndex ? '#00ff88' : '#333' }} />
-              ))}
+            <div style={{ opacity: fade ? 1 : 0, transition: 'opacity 0.3s ease' }}>
+              {renderIcon(currentSlide.iconKey, 'normal')}
             </div>
+            {!iconsLoaded && (
+              <h2 style={{ ...styles.statsTitle, opacity: fade ? 1 : 0 }}>{currentSlide.title}</h2>
+            )}
           </div>
 
-          {/* How It Works Tile */}
+          {/* How It Works */}
           <div
             onMouseEnter={() => setHoveredCard('howItWorks')}
             onMouseLeave={() => setHoveredCard(null)}
             onClick={() => setActiveModal('howItWorks')}
-            style={{ ...styles.card, ...(hoveredCard === 'howItWorks' ? styles.cardHover : {}) }}
+            style={getCardStyle('howItWorks')}
           >
-            <div style={styles.icon}>🧮</div>
+            <div style={{ fontSize: '26px', marginBottom: '8px' }}>🧮</div>
             <h2 style={styles.cardTitle}>How It Works</h2>
           </div>
 
-          {/* Help & Login Tile - MODIFIED: Added handleLoginClick */}
+          {/* Help & FAQs */}
           <div
             onMouseEnter={() => setHoveredCard('help')}
             onMouseLeave={() => setHoveredCard(null)}
-            style={{ ...styles.card, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '160px', ...(hoveredCard === 'help' ? styles.cardHover : {}) }}
+            onClick={() => setActiveModal('help')}
+            style={getCardStyle('help', false, false, true)}
           >
-            <div onClick={() => setActiveModal('help')} style={{ cursor: 'pointer' }}>
-              <div style={styles.icon}>📚</div>
-              <h2 style={styles.cardTitle}>Help & FAQs</h2>
-            </div>
-            {!isLaunched && (
-              <button
-                onClick={handleLoginClick}
-                style={{ ...styles.button, width: 'fit-content', alignSelf: 'center', marginTop: '12px', background: '#00ccff' }}
-                onMouseEnter={(e) => e.currentTarget.style.opacity = '0.8'}
-                onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
-              >
-                🔐 Log In
-              </button>
-            )}
+            <div style={{ fontSize: '26px', marginBottom: '8px' }}>📚</div>
+            <h2 style={styles.cardTitle}>Help & FAQs</h2>
           </div>
 
-          {/* Register / Enter Tile */}
+          {/* More */}
+          <div
+            onMouseEnter={() => setHoveredCard('more')}
+            onMouseLeave={() => setHoveredCard(null)}
+            style={getCardStyle('more', false, false, true)}
+          >
+            <div style={{ fontSize: '42px', marginBottom: '8px', fontWeight: 'bold', lineHeight: 1, textShadow: '0 0 12px rgba(0,255,136,0.4)' }}>➕</div>
+            <h2 style={styles.cardTitle}>More</h2>
+          </div>
+
+          {/* Featured Card — countdown / coming soon / enter */}
           <div
             onMouseEnter={() => setHoveredCard('main')}
             onMouseLeave={() => setHoveredCard(null)}
-            onClick={handleMainTileClick}
-            style={{ ...styles.countdownCard, ...(hoveredCard === 'main' ? { transform: 'translateY(-4px)', boxShadow: '0 8px 20px rgba(0,0,0,0.3)' } : {}) }}
+            onClick={isLaunched || session ? handleMainTileClick : undefined}
+            style={{
+              ...getCardStyle('main', true),
+              ...(!isLaunched && !session ? { cursor: 'default' } : {})
+            }}
           >
-            <div style={styles.icon}>🚀</div>
-            <h2 style={{ ...styles.cardTitle, color: '#00ff88' }}>{session ? 'DASHBOARD' : (isLaunched ? 'ENTER' : 'REGISTER')}</h2>
+            <h2 style={styles.featuredTitle}>
+              {session ? 'DASHBOARD' : (isLaunched ? 'ENTER' : 'COMING SOON')}
+            </h2>
+
             {!isLaunched && !session && (
-              <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap', marginTop: '16px' }}>
-                <div style={styles.timerBox}>
-                  <div style={styles.timerNumber}>{formatNumber(countdown.days)}</div>
-                  <div style={styles.timerLabel}>Days</div>
+              <>
+                <div style={styles.timerContainer}>
+                  <div style={styles.timerBox}>
+                    <div style={styles.timerNumber}>{formatNumber(countdown.days)}</div>
+                    <div style={styles.timerLabel}>Days</div>
+                  </div>
+                  <span style={styles.timerSeparator}>:</span>
+                  <div style={styles.timerBox}>
+                    <div style={styles.timerNumber}>{formatNumber(countdown.hours)}</div>
+                    <div style={styles.timerLabel}>Hours</div>
+                  </div>
+                  <span style={styles.timerSeparator}>:</span>
+                  <div style={styles.timerBox}>
+                    <div style={styles.timerNumber}>{formatNumber(countdown.minutes)}</div>
+                    <div style={styles.timerLabel}>Mins</div>
+                  </div>
+                  <span style={styles.timerSeparator}>:</span>
+                  <div style={styles.timerBox}>
+                    <div style={styles.timerNumber}>{formatNumber(countdown.seconds)}</div>
+                    <div style={styles.timerLabel}>Secs</div>
+                  </div>
                 </div>
-                <div style={styles.timerBox}>
-                  <div style={styles.timerNumber}>{formatNumber(countdown.hours)}</div>
-                  <div style={styles.timerLabel}>Hours</div>
-                </div>
-                <div style={styles.timerBox}>
-                  <div style={styles.timerNumber}>{formatNumber(countdown.minutes)}</div>
-                  <div style={styles.timerLabel}>Mins</div>
-                </div>
-                <div style={styles.timerBox}>
-                  <div style={styles.timerNumber}>{formatNumber(countdown.seconds)}</div>
-                  <div style={styles.timerLabel}>Secs</div>
-                </div>
-              </div>
+                <p style={styles.launchDate}>Launching July 15, 2026</p>
+                <p style={{ color: '#555', fontSize: '11px', marginTop: '8px', opacity: 0.7 }}>
+                  🔒 Private launch in progress
+                </p>
+              </>
             )}
-            <p style={{ color: '#666', fontSize: '12px', marginTop: '16px' }}>Launching June 1, 2026</p>
+
+            {isLaunched && !session && (
+              <p style={{ color: '#00ff88', fontSize: '12px', marginTop: '6px', opacity: 0.6 }}>
+                Tap to enter the platform
+              </p>
+            )}
           </div>
         </div>
 
-        {/* Footer */}
         <div style={styles.footer}>
-          <p style={{ marginBottom: '8px' }}>Together We Will All Prosper</p>
-          <p>
-            <span onClick={() => setShowTermsModal(true)} style={{ color: '#00ccff', cursor: 'pointer' }}>Terms of Service</span>
+          <p style={styles.footerTagline}>Together We Will All Prosper</p>
+          <p style={styles.footerLinks}>
+            <span onClick={() => setShowTermsModal(true)} style={styles.footerLink}>Terms of Service</span>
             {' • '}
-            <span onClick={() => setShowPrivacyModal(true)} style={{ color: '#00ccff', cursor: 'pointer' }}>Privacy Policy</span>
-            {' • © 2026 The Matrix (V5.0)'}
+            <span onClick={() => setShowPrivacyModal(true)} style={styles.footerLink}>Privacy Policy</span>
+            {' • © 2026 The Matrix'}
           </p>
         </div>
       </div>
 
-      {/* Waitlist Modal - Unchanged */}
-      {showWaitlistModal && (
+      {/* ⚠️ WAITLIST MODAL DISABLED — {false && ...} ensures it can never render */}
+      {false && (
         <div style={styles.modalOverlay}>
-          <div style={styles.waitlistModal}>
-            {!waitlistResult ? (
-              <>
-                <h2 style={{ color: '#00ff88', marginBottom: '20px', textAlign: 'center' }}>🚀 Secure Early Access</h2>
-                <p style={{ color: '#aaa', textAlign: 'center', marginBottom: '20px' }}>Join the waitlist to secure your spot before launch on June 1, 2026.</p>
-                <input type="text" placeholder="Full Name (Private)" value={waitlistName} onChange={(e) => setWaitlistName(e.target.value)} style={styles.input} />
-                <input type="text" placeholder="Alias (Public Display Name)" value={waitlistAlias} onChange={(e) => setWaitlistAlias(e.target.value)} style={styles.input} />
-                <input type="email" placeholder="Your Email" value={waitlistEmail} onChange={(e) => setWaitlistEmail(e.target.value)} style={styles.input} />
-                <input type="password" placeholder="Password" value={waitlistPassword} onChange={(e) => setWaitlistPassword(e.target.value)} style={styles.input} />
-                <input type="password" placeholder="Confirm Password" value={waitlistConfirmPassword} onChange={(e) => setWaitlistConfirmPassword(e.target.value)} style={styles.input} />
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <button onClick={handleJoinWaitlist} disabled={waitlistLoading} style={{ flex: 1, padding: '12px', background: '#00ff88', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', color: '#0d0d12' }}>{waitlistLoading ? 'Joining...' : 'Secure My Spot'}</button>
-                  <button onClick={() => setShowWaitlistModal(false)} style={{ flex: 1, padding: '12px', background: '#252530', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer' }}>Cancel</button>
-                </div>
-              </>
-            ) : waitlistResult.alreadyRegistered ? (
-              <>
-                <h2 style={{ color: '#00ff88', marginBottom: '20px', textAlign: 'center' }}>✅ You're Already Registered!</h2>
-                <div style={{ textAlign: 'center', padding: '20px', background: '#0d0d12', borderRadius: '12px', marginBottom: '20px' }}>
-                  <p style={{ color: 'white', fontSize: '18px', marginBottom: '10px' }}>Your Position:</p>
-                  <p style={{ color: '#00ff88', fontSize: '64px', fontWeight: 'bold', margin: '0' }}>#{waitlistResult.position}</p>
-                </div>
-                <p style={{ color: '#aaa', textAlign: 'center', marginBottom: '12px' }}>Share your referral link to move up the list:</p>
-                <code style={{ display: 'block', background: '#0d0d12', padding: '10px', borderRadius: '8px', color: '#00ff88', textAlign: 'center', marginBottom: '12px', wordBreak: 'break-all', fontSize: '12px' }}>{window.location.origin}/?ref={waitlistResult.referralCode}</code>
-                <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/?ref=${waitlistResult.referralCode}`); alert('Referral link copied!') }} style={{ width: '100%', padding: '12px', background: '#00ccff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '12px', color: '#0d0d12' }}>📋 Copy Referral Link</button>
-                <button onClick={() => setShowWaitlistModal(false)} style={{ width: '100%', padding: '12px', background: '#252530', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer' }}>Close</button>
-              </>
-            ) : (
-              <>
-                <h2 style={{ color: '#00ff88', marginBottom: '20px', textAlign: 'center' }}>✅ You're In!</h2>
-                <div style={{ textAlign: 'center', padding: '20px', background: '#0d0d12', borderRadius: '12px', marginBottom: '20px' }}>
-                  <p style={{ color: 'white', fontSize: '18px', marginBottom: '10px' }}>Your Position:</p>
-                  <p style={{ color: '#00ff88', fontSize: '64px', fontWeight: 'bold', margin: '0' }}>#{waitlistResult.position}</p>
-                </div>
-                <p style={{ color: '#aaa', textAlign: 'center', marginBottom: '12px' }}>Share your referral link to move up the list:</p>
-                <code style={{ display: 'block', background: '#0d0d12', padding: '10px', borderRadius: '8px', color: '#00ff88', textAlign: 'center', marginBottom: '12px', wordBreak: 'break-all', fontSize: '12px' }}>{window.location.origin}/?ref={waitlistResult.referralCode}</code>
-                <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/?ref=${waitlistResult.referralCode}`); alert('Referral link copied!') }} style={{ width: '100%', padding: '12px', background: '#00ccff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '12px', color: '#0d0d12' }}>📋 Copy Referral Link</button>
-                <button onClick={() => setShowWaitlistModal(false)} style={{ width: '100%', padding: '12px', background: '#252530', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer' }}>Close</button>
-              </>
-            )}
-          </div>
+          <div style={styles.modalContent}></div>
         </div>
       )}
 
-      {/* Info Modal */}
+      {/* Info Modal (About / Ethos / How It Works / Help) */}
       {activeModal && (
         <div style={styles.modalOverlay} onClick={() => setActiveModal(null)}>
           <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => setActiveModal(null)} style={{ position: 'absolute', top: '16px', right: '16px', background: 'transparent', border: 'none', color: '#888', fontSize: '20px', cursor: 'pointer' }}>✕</button>
+            <button onClick={() => setActiveModal(null)} style={styles.modalClose}>✕</button>
             {renderModalContent()}
           </div>
         </div>
       )}
 
-      {/* Terms of Service Modal */}
+      {/* Terms Modal */}
       {showTermsModal && (
         <div style={styles.modalOverlay} onClick={() => setShowTermsModal(false)}>
-          <div style={{ ...styles.modalContent, maxWidth: '800px' }} onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => setShowTermsModal(false)} style={{ position: 'absolute', top: '16px', right: '16px', background: 'transparent', border: 'none', color: '#888', fontSize: '20px', cursor: 'pointer' }}>✕</button>
-            <h1 style={{ color: '#00ff88', fontSize: '28px', marginBottom: '10px' }}>Terms of Service</h1>
-            <p style={{ color: '#aaa', fontSize: '12px', marginBottom: '20px' }}>Effective Date: May 1, 2026</p>
-            
-            <h2 style={{ color: '#00ccff', fontSize: '20px', marginTop: '20px', marginBottom: '10px' }}>Introduction</h2>
-            <p style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px' }}>Welcome to The Matrix ("Platform", "we", "us", "our"). These Terms of Service ("Terms") govern your use of our platform, website, and related services. By accessing or using The Matrix, you agree to be bound by these Terms.</p>
-            
-            <h2 style={{ color: '#00ccff', fontSize: '20px', marginBottom: '10px' }}>Definitions</h2>
-            <ul style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px', paddingLeft: '20px' }}>
+          <div style={{ ...styles.modalContent, maxHeight: '90vh' }} onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setShowTermsModal(false)} style={styles.modalClose}>✕</button>
+            <h1 style={{ color: '#00ff88', fontSize: '22px', marginBottom: '6px', fontWeight: '700' }}>Terms of Service</h1>
+            <p style={{ color: '#555', fontSize: '10px', marginBottom: '18px' }}>Effective Date: May 1, 2026</p>
+
+            <h2 style={{ color: '#00ccff', fontSize: '15px', marginTop: '16px', marginBottom: '6px', fontWeight: '600' }}>Introduction</h2>
+            <p style={{ color: '#aaa', fontSize: '12px', lineHeight: '1.6', marginBottom: '10px' }}>Welcome to The Matrix ("Platform", "we", "us", "our"). These Terms of Service ("Terms") govern your use of our platform, website, and related services. By accessing or using The Matrix, you agree to be bound by these Terms.</p>
+
+            <h2 style={{ color: '#00ccff', fontSize: '15px', marginBottom: '6px', fontWeight: '600' }}>Definitions</h2>
+            <ul style={{ color: '#aaa', fontSize: '12px', lineHeight: '1.7', marginBottom: '10px', paddingLeft: '16px' }}>
               <li><strong style={{ color: '#00ff88' }}>Points:</strong> The internal virtual currency of The Matrix, used for purchasing matrix positions</li>
               <li><strong style={{ color: '#00ff88' }}>Matrix Position:</strong> A digital asset representing a spot in the 4-wide matrix structure</li>
               <li><strong style={{ color: '#00ff88' }}>Commission:</strong> Points earned from point purchases within your downline</li>
               <li><strong style={{ color: '#00ff88' }}>Recovery Fund:</strong> A community-owned pool funded by a portion of every point purchase</li>
               <li><strong style={{ color: '#00ff88' }}>User:</strong> Any individual who registers an account on The Matrix</li>
             </ul>
-            
-            <h2 style={{ color: '#00ccff', fontSize: '20px', marginBottom: '10px' }}>No Investment or Security</h2>
-            <p style={{ color: '#ff8888', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px', fontWeight: 'bold' }}>IMPORTANT: The Matrix is NOT an investment vehicle, security, or financial instrument.</p>
-            <ul style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px', paddingLeft: '20px' }}>
+
+            <h2 style={{ color: '#00ccff', fontSize: '15px', marginBottom: '6px', fontWeight: '600' }}>No Investment or Security</h2>
+            <p style={{ color: '#ff6b6b', fontSize: '12px', lineHeight: '1.6', marginBottom: '10px', fontWeight: 'bold' }}>IMPORTANT: The Matrix is NOT an investment vehicle, security, or financial instrument.</p>
+            <ul style={{ color: '#aaa', fontSize: '12px', lineHeight: '1.7', marginBottom: '10px', paddingLeft: '16px' }}>
               <li>Points have no guaranteed value</li>
               <li>Commissions are not guaranteed returns</li>
               <li>No promise of profit is made</li>
               <li>You are purchasing a digital asset, not an investment</li>
             </ul>
-            
-            <h2 style={{ color: '#00ccff', fontSize: '20px', marginBottom: '10px' }}>How The Matrix Works</h2>
-            <p style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px' }}>The Matrix is a community wealth-building platform where users acquire points to participate in a structured system that may generate commissions and contribute to a community fund.</p>
-            
-            <h2 style={{ color: '#00ccff', fontSize: '20px', marginBottom: '10px' }}>No Pyramid Scheme</h2>
-            <p style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px' }}>The Matrix is NOT a pyramid scheme because:</p>
-            <ul style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px', paddingLeft: '20px' }}>
+
+            <h2 style={{ color: '#00ccff', fontSize: '15px', marginBottom: '6px', fontWeight: '600' }}>How The Matrix Works</h2>
+            <p style={{ color: '#aaa', fontSize: '12px', lineHeight: '1.6', marginBottom: '10px' }}>The Matrix is a community wealth-building platform where users acquire points to participate in a structured system that may generate commissions and contribute to a community fund.</p>
+
+            <h2 style={{ color: '#00ccff', fontSize: '15px', marginBottom: '6px', fontWeight: '600' }}>No Pyramid Scheme</h2>
+            <p style={{ color: '#aaa', fontSize: '12px', lineHeight: '1.6', marginBottom: '10px' }}>The Matrix is NOT a pyramid scheme because:</p>
+            <ul style={{ color: '#aaa', fontSize: '12px', lineHeight: '1.7', marginBottom: '10px', paddingLeft: '16px' }}>
               <li>No payment is required to participate</li>
               <li>Commissions are based on point purchases, not recruitment</li>
               <li>The matrix structure has built-in limits</li>
               <li>Auto-entry provides opportunities for all participants</li>
             </ul>
-            
-            <h2 style={{ color: '#00ccff', fontSize: '20px', marginBottom: '10px' }}>Risk Disclosure</h2>
-            <p style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px' }}>By using The Matrix, you acknowledge and accept:</p>
-            <ul style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px', paddingLeft: '20px' }}>
+
+            <h2 style={{ color: '#00ccff', fontSize: '15px', marginBottom: '6px', fontWeight: '600' }}>Risk Disclosure</h2>
+            <p style={{ color: '#aaa', fontSize: '12px', lineHeight: '1.6', marginBottom: '10px' }}>By using The Matrix, you acknowledge and accept:</p>
+            <ul style={{ color: '#aaa', fontSize: '12px', lineHeight: '1.7', marginBottom: '10px', paddingLeft: '16px' }}>
               <li>Points have no guaranteed cash value</li>
               <li>Commissions are not guaranteed</li>
               <li>The platform may evolve or change over time</li>
@@ -833,85 +584,85 @@ function LandingPage() {
               <li>You may lose the value of points you purchase</li>
               <li>Past performance does not indicate future results</li>
             </ul>
-            
-            <h2 style={{ color: '#00ccff', fontSize: '20px', marginBottom: '10px' }}>Eligibility</h2>
-            <p style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px' }}>You must be at least 18 years old to use The Matrix. You are responsible for determining whether your participation complies with applicable laws in your jurisdiction.</p>
-            
-            <h2 style={{ color: '#00ccff', fontSize: '20px', marginBottom: '10px' }}>Prohibited Activities</h2>
-            <p style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px' }}>You may not:</p>
-            <ul style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px', paddingLeft: '20px' }}>
+
+            <h2 style={{ color: '#00ccff', fontSize: '15px', marginBottom: '6px', fontWeight: '600' }}>Eligibility</h2>
+            <p style={{ color: '#aaa', fontSize: '12px', lineHeight: '1.6', marginBottom: '10px' }}>You must be at least 18 years old to use The Matrix. You are responsible for determining whether your participation complies with applicable laws in your jurisdiction.</p>
+
+            <h2 style={{ color: '#00ccff', fontSize: '15px', marginBottom: '6px', fontWeight: '600' }}>Prohibited Activities</h2>
+            <p style={{ color: '#aaa', fontSize: '12px', lineHeight: '1.6', marginBottom: '10px' }}>You may not:</p>
+            <ul style={{ color: '#aaa', fontSize: '12px', lineHeight: '1.7', marginBottom: '10px', paddingLeft: '16px' }}>
               <li>Use the platform for any illegal purpose</li>
               <li>Manipulate or exploit the matrix structure</li>
               <li>Create multiple accounts</li>
               <li>Engage in fraudulent or deceptive practices</li>
               <li>Promote The Matrix as an "investment opportunity"</li>
             </ul>
-            
-            <h2 style={{ color: '#00ccff', fontSize: '20px', marginBottom: '10px' }}>Termination</h2>
-            <p style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px' }}>We reserve the right to suspend or terminate accounts that violate these Terms.</p>
-            
-            <h2 style={{ color: '#00ccff', fontSize: '20px', marginBottom: '10px' }}>Limitation of Liability</h2>
-            <p style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px' }}>To the maximum extent permitted by law, The Matrix shall not be liable for any indirect, incidental, or consequential damages.</p>
-            
-            <h2 style={{ color: '#00ccff', fontSize: '20px', marginBottom: '10px' }}>Changes to Terms</h2>
-            <p style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px' }}>We may update these Terms from time to time. Continued use of the platform constitutes acceptance of updated Terms.</p>
-            
-            <h2 style={{ color: '#00ccff', fontSize: '20px', marginBottom: '10px' }}>Contact</h2>
-            <p style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px' }}>For questions about these Terms, contact: legal@the-matrix.app</p>
-            
-            <h2 style={{ color: '#00ccff', fontSize: '20px', marginBottom: '10px' }}>Governing Law</h2>
-            <p style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px' }}>These Terms shall be governed by the laws of Barbados.</p>
-            
-            <p style={{ color: '#00ff88', fontSize: '14px', marginTop: '20px', paddingTop: '15px', borderTop: '1px solid #252530' }}>BY USING THE MATRIX, YOU ACKNOWLEDGE THAT YOU HAVE READ, UNDERSTOOD, AND AGREE TO THESE TERMS.</p>
+
+            <h2 style={{ color: '#00ccff', fontSize: '15px', marginBottom: '6px', fontWeight: '600' }}>Termination</h2>
+            <p style={{ color: '#aaa', fontSize: '12px', lineHeight: '1.6', marginBottom: '10px' }}>We reserve the right to suspend or terminate accounts that violate these Terms.</p>
+
+            <h2 style={{ color: '#00ccff', fontSize: '15px', marginBottom: '6px', fontWeight: '600' }}>Limitation of Liability</h2>
+            <p style={{ color: '#aaa', fontSize: '12px', lineHeight: '1.6', marginBottom: '10px' }}>To the maximum extent permitted by law, The Matrix shall not be liable for any indirect, incidental, or consequential damages.</p>
+
+            <h2 style={{ color: '#00ccff', fontSize: '15px', marginBottom: '6px', fontWeight: '600' }}>Changes to Terms</h2>
+            <p style={{ color: '#aaa', fontSize: '12px', lineHeight: '1.6', marginBottom: '10px' }}>We may update these Terms from time to time. Continued use of the platform constitutes acceptance of updated Terms.</p>
+
+            <h2 style={{ color: '#00ccff', fontSize: '15px', marginBottom: '6px', fontWeight: '600' }}>Contact</h2>
+            <p style={{ color: '#aaa', fontSize: '12px', lineHeight: '1.6', marginBottom: '10px' }}>For questions about these Terms, contact: hello@the-matrix.app</p>
+
+            <h2 style={{ color: '#00ccff', fontSize: '15px', marginBottom: '6px', fontWeight: '600' }}>Governing Principles</h2>
+            <p style={{ color: '#aaa', fontSize: '12px', lineHeight: '1.6', marginBottom: '10px' }}>These Terms shall be interpreted in accordance with the principles of equity, good conscience, and international comity, drawing inspiration from the universal values of fairness, transparency, and human dignity. The parties agree to resolve disputes through dialogue and good faith negotiation before seeking any formal remedy.</p>
+
+            <p style={{ color: '#00ff88', fontSize: '12px', marginTop: '18px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>BY USING THE MATRIX, YOU ACKNOWLEDGE THAT YOU HAVE READ, UNDERSTOOD, AND AGREE TO THESE TERMS.</p>
           </div>
         </div>
       )}
 
-      {/* Privacy Policy Modal */}
+      {/* Privacy Modal */}
       {showPrivacyModal && (
         <div style={styles.modalOverlay} onClick={() => setShowPrivacyModal(false)}>
-          <div style={{ ...styles.modalContent, maxWidth: '700px' }} onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => setShowPrivacyModal(false)} style={{ position: 'absolute', top: '16px', right: '16px', background: 'transparent', border: 'none', color: '#888', fontSize: '20px', cursor: 'pointer' }}>✕</button>
-            <h1 style={{ color: '#00ff88', fontSize: '28px', marginBottom: '10px' }}>Privacy Policy</h1>
-            <p style={{ color: '#aaa', fontSize: '12px', marginBottom: '20px' }}>Effective Date: May 1, 2026</p>
-            
-            <h2 style={{ color: '#00ccff', fontSize: '20px', marginBottom: '10px' }}>Information We Collect</h2>
-            <ul style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px', paddingLeft: '20px' }}>
+          <div style={{ ...styles.modalContent, maxHeight: '90vh' }} onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setShowPrivacyModal(false)} style={styles.modalClose}>✕</button>
+            <h1 style={{ color: '#00ff88', fontSize: '22px', marginBottom: '6px', fontWeight: '700' }}>Privacy Policy</h1>
+            <p style={{ color: '#555', fontSize: '10px', marginBottom: '18px' }}>Effective Date: May 1, 2026</p>
+
+            <h2 style={{ color: '#00ccff', fontSize: '15px', marginBottom: '6px', fontWeight: '600' }}>Information We Collect</h2>
+            <ul style={{ color: '#aaa', fontSize: '12px', lineHeight: '1.7', marginBottom: '10px', paddingLeft: '16px' }}>
               <li><strong style={{ color: '#00ff88' }}>Account Information:</strong> Email, name, alias</li>
               <li><strong style={{ color: '#00ff88' }}>Transaction Data:</strong> Point purchases, commissions, redemptions</li>
               <li><strong style={{ color: '#00ff88' }}>Usage Data:</strong> Login times, feature usage</li>
               <li><strong style={{ color: '#00ff88' }}>Device Information:</strong> IP address, browser type</li>
             </ul>
-            
-            <h2 style={{ color: '#00ccff', fontSize: '20px', marginBottom: '10px' }}>How We Use Your Information</h2>
-            <ul style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px', paddingLeft: '20px' }}>
+
+            <h2 style={{ color: '#00ccff', fontSize: '15px', marginBottom: '6px', fontWeight: '600' }}>How We Use Your Information</h2>
+            <ul style={{ color: '#aaa', fontSize: '12px', lineHeight: '1.7', marginBottom: '10px', paddingLeft: '16px' }}>
               <li>To operate and improve the platform</li>
               <li>To process transactions</li>
               <li>To communicate important updates</li>
               <li>To comply with legal obligations</li>
             </ul>
-            
-            <h2 style={{ color: '#00ccff', fontSize: '20px', marginBottom: '10px' }}>Data Sharing</h2>
-            <p style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px' }}>We do not sell your personal information. We may share data:</p>
-            <ul style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px', paddingLeft: '20px' }}>
+
+            <h2 style={{ color: '#00ccff', fontSize: '15px', marginBottom: '6px', fontWeight: '600' }}>Data Sharing</h2>
+            <p style={{ color: '#aaa', fontSize: '12px', lineHeight: '1.6', marginBottom: '10px' }}>We do not sell your personal information. We may share data:</p>
+            <ul style={{ color: '#aaa', fontSize: '12px', lineHeight: '1.7', marginBottom: '10px', paddingLeft: '16px' }}>
               <li>With service providers (Supabase, Vercel, NowPayments)</li>
               <li>When required by law</li>
               <li>To protect our rights and safety</li>
             </ul>
-            
-            <h2 style={{ color: '#00ccff', fontSize: '20px', marginBottom: '10px' }}>Your Rights</h2>
-            <p style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px' }}>You may request:</p>
-            <ul style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px', paddingLeft: '20px' }}>
+
+            <h2 style={{ color: '#00ccff', fontSize: '15px', marginBottom: '6px', fontWeight: '600' }}>Your Rights</h2>
+            <p style={{ color: '#aaa', fontSize: '12px', lineHeight: '1.6', marginBottom: '10px' }}>You may request:</p>
+            <ul style={{ color: '#aaa', fontSize: '12px', lineHeight: '1.7', marginBottom: '10px', paddingLeft: '16px' }}>
               <li>Access to your data</li>
               <li>Correction of inaccurate data</li>
               <li>Deletion of your account</li>
             </ul>
-            
-            <h2 style={{ color: '#00ccff', fontSize: '20px', marginBottom: '10px' }}>Data Retention</h2>
-            <p style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px' }}>We retain your data as long as your account is active or as needed to provide services.</p>
-            
-            <h2 style={{ color: '#00ccff', fontSize: '20px', marginBottom: '10px' }}>Contact</h2>
-            <p style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.6', marginBottom: '15px' }}>Privacy questions: hello@the-matrix.app</p>
+
+            <h2 style={{ color: '#00ccff', fontSize: '15px', marginBottom: '6px', fontWeight: '600' }}>Data Retention</h2>
+            <p style={{ color: '#aaa', fontSize: '12px', lineHeight: '1.6', marginBottom: '10px' }}>We retain your data as long as your account is active or as needed to provide services.</p>
+
+            <h2 style={{ color: '#00ccff', fontSize: '15px', marginBottom: '6px', fontWeight: '600' }}>Contact</h2>
+            <p style={{ color: '#aaa', fontSize: '12px', lineHeight: '1.6', marginBottom: '10px' }}>Privacy questions: hello@the-matrix.app</p>
           </div>
         </div>
       )}

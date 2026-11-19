@@ -1,5 +1,5 @@
 // client/src/pages/Signup.jsx
-// THE MATRIX V5.0 - Complete with Manual Crypto Payment
+// THE MATRIX V5.1 - Complete with Manual Crypto Payment + Auto Prize Claim
 
 import { useState, useEffect } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
@@ -37,6 +37,7 @@ function Signup() {
   const [successMessage, setSuccessMessage] = useState(messageParam || null)
   const [step, setStep] = useState('form')
   const [showTermsModal, setShowTermsModal] = useState(false)
+  const [prizeClaimMessage, setPrizeClaimMessage] = useState(null)
   
   // Payment method state
   const [activationCode, setActivationCode] = useState('')
@@ -48,6 +49,7 @@ function Signup() {
   const CREATE_ACTIVATE_URL = `${SUPABASE_URL}/functions/v1/create-activate-user`
   const SIGNUP_URL = `${SUPABASE_URL}/functions/v1/signup`
   const VALIDATE_CODE_URL = `${SUPABASE_URL}/functions/v1/validate-activation-code`
+  const CLAIM_PRIZES_URL = `${SUPABASE_URL}/functions/v1/claim-pending-prizes`
 
   const hasReferralCode = referralCode && referralCode.trim() !== ''
 
@@ -240,7 +242,7 @@ function Signup() {
       state: { 
         type: 'registration', 
         pendingSignupId: pendingSignupId,
-        usdAmount: 250
+        usdAmount: 25
       } 
     })
   }
@@ -270,10 +272,37 @@ function Signup() {
       if (result.success) {
         localStorage.removeItem('pendingSignupId')
         localStorage.removeItem('pendingExpiresAt')
+
+        // NEW: Auto-claim any winning raffle prizes matching this email
+        let prizeMessage = null
+        try {
+          const { data: { session } } = await supabase.auth.getSession()
+          if (session) {
+            const claimRes = await fetch(CLAIM_PRIZES_URL, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`
+              },
+              body: JSON.stringify({})
+            })
+            const claimData = await claimRes.json()
+            if (claimData.success && claimData.claimed > 0) {
+              prizeMessage = claimData.message
+            }
+          }
+        } catch (claimErr) {
+          console.warn('Prize auto-claim check failed (non-fatal):', claimErr)
+        }
+
         setStep('success')
+        setPrizeClaimMessage(prizeMessage)
         setTimeout(() => {
-          window.location.href = '/login?message=Activation+successful!+Please+login.'
-        }, 3000)
+          const redirectMessage = prizeMessage
+            ? `${prizeMessage} Please login to see your balance.`
+            : 'Activation successful! Please login.'
+          window.location.href = `/login?message=${encodeURIComponent(redirectMessage)}`
+        }, prizeMessage ? 5000 : 3000)
       } else {
         setError(result.error)
       }
@@ -307,11 +336,11 @@ function Signup() {
           user_id: pending.referrer_user_id,
           type: 'transfer_request',
           title: '🎁 Points Transfer Request',
-          message: `A new user (${alias || name}) has requested 50,000 points to activate their matrix spot.`,
+          message: `A new user (${alias || name}) has requested 5,000 points to activate their matrix spot.`,
           action_data: {
             action: 'approve_transfer',
             pending_signup_id: pendingSignupId,
-            amount: 50000,
+            amount: 5000,
             requester_alias: alias || name,
             requester_email: email
           },
@@ -525,7 +554,7 @@ function Signup() {
                 <span style={{ fontSize: '32px' }}>💎</span>
                 <div>
                   <h3 style={{ color: '#ffa502', marginBottom: '5px' }}>Pay with Crypto (Manual)</h3>
-                  <p style={{ color: '#aaa', fontSize: '12px' }}>$250 USDT • Admin review required</p>
+                  <p style={{ color: '#aaa', fontSize: '12px' }}>$25 USDT • Admin review required</p>
                 </div>
               </div>
             </div>
@@ -575,7 +604,7 @@ function Signup() {
                 <span style={{ fontSize: '32px' }}>🔄</span>
                 <div>
                   <h3 style={{ color: '#00ccff', marginBottom: '5px' }}>Request Points Transfer</h3>
-                  <p style={{ color: '#aaa', fontSize: '12px' }}>Ask your referrer to transfer 50,000 points</p>
+                  <p style={{ color: '#aaa', fontSize: '12px' }}>Ask your referrer to transfer 5,000 points</p>
                 </div>
               </div>
             </div>
@@ -618,15 +647,26 @@ function Signup() {
   const renderSuccess = () => (
     <div style={{ textAlign: 'center' }}>
       <div style={{ fontSize: '60px', marginBottom: '20px' }}>🎉</div>
-      <h2 style={{ color: '#00ff88', marginBottom: '15px' }}>Almost There!</h2>
-      <p style={{ color: '#aaa' }}>Your request has been processed. You will be redirected shortly.</p>
+      <h2 style={{ color: '#00ff88', marginBottom: '15px' }}>
+        {prizeClaimMessage ? 'Welcome, Winner!' : 'Almost There!'}
+      </h2>
+      {prizeClaimMessage ? (
+        <>
+          <p style={{ color: '#ffa502', fontSize: '16px', fontWeight: 'bold', marginBottom: '15px' }}>
+            {prizeClaimMessage}
+          </p>
+          <p style={{ color: '#aaa' }}>Redirecting to login...</p>
+        </>
+      ) : (
+        <p style={{ color: '#aaa' }}>Your request has been processed. You will be redirected shortly.</p>
+      )}
     </div>
   )
 
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #0a0a2a 0%, #1a1a3a 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
       <div style={{ background: '#1a1a3a', padding: '30px', borderRadius: '10px', width: '100%', maxWidth: '550px', border: step === 'payment_method' ? '1px solid #ffa502' : '1px solid #00ff88' }}>
-        <h1 style={{ color: step === 'payment_method' ? '#ffa502' : '#00ff88', textAlign: 'center', marginBottom: '20px' }}>🔷 Join The Matrix</h1>
+        <h1 style={{ color: step === 'payment_method' ? '#ffa502' : '#00ff88', textAlign: 'center', marginBottom: '20px' }}>🔷 Join SIGMA-PLUS</h1>
         
         {step === 'form' && renderSignupForm()}
         {step === 'payment_method' && renderPaymentMethodSelection()}
